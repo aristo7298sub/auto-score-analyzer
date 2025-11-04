@@ -1,0 +1,67 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to Azure VM
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo "🚀 Starting deployment..."
+            
+            # 进入项目目录（如果不存在则克隆）
+            if [ ! -d "/opt/auto-score-analyzer" ]; then
+              echo "📦 Cloning repository..."
+              cd /opt
+              sudo git clone https://github.com/aristo7298sub/auto-score-analyzer.git
+              sudo chown -R $USER:$USER auto-score-analyzer
+            fi
+            
+            cd /opt/auto-score-analyzer
+            
+            # 拉取最新代码
+            echo "📥 Pulling latest code..."
+            git pull origin main
+            
+            # 检查.env文件
+            if [ ! -f .env ]; then
+              echo "⚠️ Warning: .env file not found. Please configure it manually."
+              echo "Example: cp .env.example .env && nano .env"
+            fi
+            
+            # 停止现有容器
+            echo "🛑 Stopping existing containers..."
+            docker-compose down
+            
+            # 重新构建并启动
+            echo "🔨 Building and starting containers..."
+            docker-compose up -d --build
+            
+            # 等待健康检查
+            echo "⏳ Waiting for services to be healthy..."
+            sleep 30
+            
+            # 检查服务状态
+            echo "📊 Service status:"
+            docker-compose ps
+            
+            # 清理未使用的镜像
+            echo "🧹 Cleaning up unused images..."
+            docker image prune -f
+            
+            echo "✅ Deployment completed!"
+            echo "🌐 Application available at: http://40.81.16.161"
