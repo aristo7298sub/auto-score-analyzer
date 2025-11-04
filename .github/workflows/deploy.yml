@@ -21,10 +21,12 @@ jobs:
       
       - name: Deploy to Azure VM
         uses: appleboy/ssh-action@v1.0.0
+        timeout-minutes: 20  # 增加超时时间到20分钟
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_KEY }}
+          command_timeout: 20m  # SSH命令超时时间
           script: |
             echo "🚀 Starting deployment..."
             
