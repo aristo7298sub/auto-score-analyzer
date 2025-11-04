@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch: # 允许手动触发
 
+# 防止并发部署
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false  # 不取消正在运行的，新的排队等待
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
