@@ -3,14 +3,20 @@ import seaborn as sns
 import pandas as pd
 from typing import List, Dict
 import os
+import tempfile
+from pathlib import Path
 from app.models.score import StudentScore
 from app.services.storage_service import StorageService
+from app.services.file_storage_service import file_storage
+from app.core.config import settings
 
 class VisualizationService:
     def __init__(self):
         self.storage_service = StorageService()
-        self.charts_dir = "static/charts"
-        os.makedirs(self.charts_dir, exist_ok=True)
+        # 仅本地模式时创建目录
+        if settings.STORAGE_TYPE == "local":
+            self.charts_dir = "static/charts"
+            os.makedirs(self.charts_dir, exist_ok=True)
 
     def _prepare_data(self) -> pd.DataFrame:
         """准备可视化数据"""
@@ -29,8 +35,35 @@ class VisualizationService:
                     "扣分": item.deduction
                 })
         return pd.DataFrame(data)
+    
+    async def _save_chart(self, filename: str) -> str:
+        """保存图表到存储服务"""
+        # 保存到临时文件
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
+            temp_path = temp_file.name
+            plt.savefig(temp_path, dpi=100, bbox_inches='tight')
+            plt.close()
+        
+        try:
+            # 读取文件内容
+            with open(temp_path, "rb") as f:
+                file_content = f.read()
+            
+            # 保存到存储服务
+            file_url = await file_storage.save_file(
+                file_content=file_content,
+                filename=filename,
+                file_type="chart",
+                content_type="image/png"
+            )
+            
+            return file_url
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
-    def generate_score_distribution(self) -> str:
+    async def generate_score_distribution(self) -> str:
         """生成成绩分布柱状图"""
         df = self._prepare_data()
         
@@ -40,13 +73,9 @@ class VisualizationService:
         plt.xticks(rotation=45)
         plt.tight_layout()
         
-        file_path = os.path.join(self.charts_dir, "score_distribution.png")
-        plt.savefig(file_path)
-        plt.close()
-        
-        return file_path
+        return await self._save_chart("score_distribution.png")
 
-    def generate_category_pie(self) -> str:
+    async def generate_category_pie(self) -> str:
         """生成题目类型分布饼图"""
         df = self._prepare_data()
         
@@ -55,13 +84,9 @@ class VisualizationService:
         plt.pie(category_sum, labels=category_sum.index, autopct='%1.1f%%')
         plt.title("题目类型扣分分布")
         
-        file_path = os.path.join(self.charts_dir, "category_pie.png")
-        plt.savefig(file_path)
-        plt.close()
-        
-        return file_path
+        return await self._save_chart("category_pie.png")
 
-    def generate_student_comparison(self) -> str:
+    async def generate_student_comparison(self) -> str:
         """生成学生成绩对比折线图"""
         df = self._prepare_data()
         
@@ -72,13 +97,9 @@ class VisualizationService:
         plt.xticks(rotation=45)
         plt.tight_layout()
         
-        file_path = os.path.join(self.charts_dir, "student_comparison.png")
-        plt.savefig(file_path)
-        plt.close()
-        
-        return file_path
+        return await self._save_chart("student_comparison.png")
 
-    def generate_question_heatmap(self) -> str:
+    async def generate_question_heatmap(self) -> str:
         """生成题目扣分热力图"""
         df = self._prepare_data()
         
@@ -88,14 +109,16 @@ class VisualizationService:
         plt.title("题目扣分热力图")
         plt.tight_layout()
         
-        file_path = os.path.join(self.charts_dir, "question_heatmap.png")
-        plt.savefig(file_path)
-        plt.close()
-        
-        return file_path
+        return await self._save_chart("question_heatmap.png")
 
-    def get_all_charts(self) -> Dict[str, str]:
+    async def get_all_charts(self) -> Dict[str, str]:
         """获取所有图表"""
+        return {
+            "score_distribution": await self.generate_score_distribution(),
+            "category_pie": await self.generate_category_pie(),
+            "student_comparison": await self.generate_student_comparison(),
+            "question_heatmap": await self.generate_question_heatmap()
+        }
         return {
             "score_distribution": self.generate_score_distribution(),
             "category_pie": self.generate_category_pie(),

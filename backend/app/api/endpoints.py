@@ -1,12 +1,15 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Body
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
 import os
 import logging
+import tempfile
+from pathlib import Path
 from app.services.file_service import FileService
 from app.models.score import StudentScore, ScoreResponse
 from app.services.analysis_service import AnalysisService
 from app.services.storage_service import StorageService
+from app.services.file_storage_service import file_storage
 from app.services.export_service import ExportService
 from app.services.visualization_service import VisualizationService
 import pandas as pd
@@ -21,10 +24,11 @@ storage_service = StorageService()
 export_service = ExportService()
 visualization_service = VisualizationService()
 
-# 创建必要的目录
-os.makedirs("uploads", exist_ok=True)
-os.makedirs("exports", exist_ok=True)
-os.makedirs("static/charts", exist_ok=True)
+# 本地模式时创建必要的目录
+if file_storage.storage_type == "local":
+    os.makedirs("uploads", exist_ok=True)
+    os.makedirs("exports", exist_ok=True)
+    os.makedirs("static/charts", exist_ok=True)
 
 @router.post("/upload", response_model=ScoreResponse)
 async def upload_file(file: UploadFile = File(...)):
@@ -50,15 +54,27 @@ async def upload_file(file: UploadFile = File(...)):
             logger.error(f"不支持的文件格式: {file.filename}")
             raise HTTPException(status_code=400, detail="不支持的文件格式，仅支持 .xlsx, .docx, .pptx 格式")
         
-        # 保存上传的文件
-        file_path = os.path.join("uploads", file.filename)
-        logger.info(f"保存文件到: {file_path}")
+        # 读取文件内容
+        content = await file.read()
         
+        # 保存上传的文件到存储服务
+        logger.info(f"保存文件到存储: {file.filename}")
         try:
-            with open(file_path, "wb") as buffer:
-                content = await file.read()
-                buffer.write(content)
-            logger.info("文件保存成功")
+            # 保存到云存储或本地
+            file_url = await file_storage.save_file(
+                file_content=content,
+                filename=file.filename,
+                file_type="upload",
+                content_type=file.content_type
+            )
+            logger.info(f"文件保存成功: {file_url}")
+            
+            # 创建临时文件用于处理（因为pandas/docx需要文件路径）
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as temp_file:
+                temp_file.write(content)
+                file_path = temp_file.name
+            logger.info(f"创建临时文件: {file_path}")
+            
         except Exception as e:
             logger.error(f"保存文件失败: {str(e)}")
             raise HTTPException(status_code=500, detail=f"保存文件失败: {str(e)}")
@@ -176,10 +192,6 @@ async def export_scores(
         original_filename: 原始上传的文件名
     """
     try:
-        # 创建导出目录
-        export_dir = "exports"
-        os.makedirs(export_dir, exist_ok=True)
-        
         # 生成文件名
         base_name = original_filename.rsplit('.', 1)[0] if original_filename else "成绩分析报告"
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -187,21 +199,51 @@ async def export_scores(
         
         if format == "xlsx":
             filename = f"{base_name}-成绩分析_{timestamp}_{unique_id}.xlsx"
-            file_path = os.path.join(export_dir, filename)
-            await export_service.export_to_excel(scores, file_path, original_filename)
         elif format == "docx":
             filename = f"{base_name}-成绩分析_{timestamp}_{unique_id}.docx"
-            file_path = os.path.join(export_dir, filename)
-            await export_service.export_to_word(scores, file_path, original_filename)
         else:
             raise HTTPException(status_code=400, detail="不支持的导出格式")
         
-        # 返回文件
-        return FileResponse(
-            file_path,
-            filename=filename,
-            media_type=f"application/{format}"
-        )
+        # 创建临时文件用于导出
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{format}") as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # 导出到临时文件
+            if format == "xlsx":
+                await export_service.export_to_excel(scores, temp_path, original_filename)
+            else:
+                await export_service.export_to_word(scores, temp_path, original_filename)
+            
+            # 读取文件内容
+            with open(temp_path, "rb") as f:
+                file_content = f.read()
+            
+            # 保存到存储服务
+            file_url = await file_storage.save_file(
+                file_content=file_content,
+                filename=filename,
+                file_type="export",
+                content_type=f"application/{format}"
+            )
+            
+            logger.info(f"导出文件已保存: {file_url}")
+            
+            # 生成下载链接
+            download_url = file_storage.generate_download_url(filename, "export", expiry_hours=24)
+            
+            return JSONResponse({
+                "success": True,
+                "message": "导出成功",
+                "download_url": download_url,
+                "filename": filename
+            })
+            
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
     except Exception as e:
         logger.error(f"导出失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -210,7 +252,7 @@ async def export_scores(
 async def get_charts():
     """获取所有图表"""
     try:
-        charts = visualization_service.get_all_charts()
+        charts = await visualization_service.get_all_charts()
         return charts
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -220,19 +262,21 @@ async def get_chart(chart_type: str):
     """获取指定类型的图表"""
     try:
         if chart_type == "score_distribution":
-            file_path = visualization_service.generate_score_distribution()
+            file_url = await visualization_service.generate_score_distribution()
         elif chart_type == "category_pie":
-            file_path = visualization_service.generate_category_pie()
+            file_url = await visualization_service.generate_category_pie()
         elif chart_type == "student_comparison":
-            file_path = visualization_service.generate_student_comparison()
+            file_url = await visualization_service.generate_student_comparison()
         elif chart_type == "question_heatmap":
-            file_path = visualization_service.generate_question_heatmap()
+            file_url = await visualization_service.generate_question_heatmap()
         else:
             raise HTTPException(status_code=400, detail="不支持的图表类型")
         
-        return FileResponse(
-            file_path,
-            media_type="image/png"
-        )
+        # 返回图表 URL（可能是本地路径或 Azure Blob URL）
+        return JSONResponse({
+            "success": True,
+            "chart_url": file_url,
+            "chart_type": chart_type
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 

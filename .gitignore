@@ -76,3 +76,6 @@ PROD_backup*/
 *.tmp
 *.bak
 .cache/
+# Test files
+backend/test*.py
+**/test_*.py
