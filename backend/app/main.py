@@ -18,4 +18,12 @@ app.include_router(api_router, prefix="/api")
 
 @app.get("/")
 async def root():
-    return {"message": "欢迎使用学生成绩分析系统"} 
+    return {"message": "欢迎使用学生成绩分析系统"}
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "auto-score-analyzer",
+        "version": "1.0.0"
+    } 

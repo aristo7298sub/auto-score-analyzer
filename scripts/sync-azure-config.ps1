@@ -60,11 +60,14 @@ $blobEndpoint = az storage account show `
 Write-Host "✅ Blob 端点: $blobEndpoint" -ForegroundColor Green
 
 # 创建或更新 .env 文件
-$envPath = Join-Path $PSScriptRoot ".." $EnvFile
+$envPath = Join-Path $PSScriptRoot ".." "backend" $EnvFile
 
 if (-not (Test-Path $envPath)) {
     Write-Host "`n📝 创建新的 .env 文件..." -ForegroundColor Cyan
-    Copy-Item (Join-Path $PSScriptRoot ".." ".env.example") $envPath -ErrorAction SilentlyContinue
+    $examplePath = Join-Path $PSScriptRoot ".." "backend" ".env.example"
+    if (Test-Path $examplePath) {
+        Copy-Item $examplePath $envPath -ErrorAction SilentlyContinue
+    }
 }
 
 # 读取现有 .env 内容

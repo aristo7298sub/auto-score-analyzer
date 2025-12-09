@@ -4,7 +4,9 @@ from typing import List, Dict
 import os
 import logging
 import tempfile
+import io
 from pathlib import Path
+from urllib.parse import quote
 from app.services.file_service import FileService
 from app.models.score import StudentScore, ScoreResponse
 from app.services.analysis_service import AnalysisService
@@ -184,7 +186,7 @@ async def export_scores(
     original_filename: str = Body(default="")
 ):
     """
-    导出成绩数据
+    导出成绩数据 - 直接返回文件流
     
     Args:
         format: 导出格式 (xlsx 或 docx)
@@ -199,8 +201,10 @@ async def export_scores(
         
         if format == "xlsx":
             filename = f"{base_name}-成绩分析_{timestamp}_{unique_id}.xlsx"
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         elif format == "docx":
             filename = f"{base_name}-成绩分析_{timestamp}_{unique_id}.docx"
+            media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         else:
             raise HTTPException(status_code=400, detail="不支持的导出格式")
         
@@ -219,25 +223,31 @@ async def export_scores(
             with open(temp_path, "rb") as f:
                 file_content = f.read()
             
-            # 保存到存储服务
-            file_url = await file_storage.save_file(
-                file_content=file_content,
-                filename=filename,
-                file_type="export",
-                content_type=f"application/{format}"
+            logger.info(f"导出文件生成成功: {filename}, 大小: {len(file_content)} bytes")
+            
+            # 同时保存到 Azure Storage（备份）
+            try:
+                file_url = await file_storage.save_file(
+                    file_content=file_content,
+                    filename=filename,
+                    file_type="export",
+                    content_type=media_type
+                )
+                logger.info(f"文件已备份到存储: {file_url}")
+            except Exception as storage_error:
+                logger.warning(f"存储备份失败（不影响下载）: {storage_error}")
+            
+            # 直接返回文件流给前端
+            # 对文件名进行 URL 编码以支持中文
+            encoded_filename = quote(filename.encode('utf-8'))
+            return StreamingResponse(
+                io.BytesIO(file_content),
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename*=UTF-8\'\'{encoded_filename}',
+                    "Content-Length": str(len(file_content))
+                }
             )
-            
-            logger.info(f"导出文件已保存: {file_url}")
-            
-            # 生成下载链接
-            download_url = file_storage.generate_download_url(filename, "export", expiry_hours=24)
-            
-            return JSONResponse({
-                "success": True,
-                "message": "导出成功",
-                "download_url": download_url,
-                "filename": filename
-            })
             
         finally:
             # 清理临时文件
