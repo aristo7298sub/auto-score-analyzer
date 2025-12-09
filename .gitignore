@@ -1,5 +1,9 @@
-# 环境变量
+# 环境变量和敏感配置
 .env
+.env.*
+*.env
+backend/.env
+frontend/.env
 .env.local
 .env.*.local
 
@@ -40,12 +44,21 @@ dist-ssr/
 
 # 数据和上传文件
 backend/data/*.json
+backend/data/*.xlsx
+backend/data/*.csv
 backend/uploads/*
 !backend/uploads/.gitkeep
 backend/exports/*
 !backend/exports/.gitkeep
 backend/static/charts/*
 !backend/static/charts/.gitkeep
+uploads/
+exports/
+static/charts/
+
+# 部署相关敏感信息
+scripts/deploy-*.log
+deployment-url.txt
 
 # 测试和示例文件
 Aaa.xlsx

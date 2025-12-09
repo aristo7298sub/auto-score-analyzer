@@ -3,6 +3,9 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# 构建参数
+ARG VITE_API_URL=http://localhost:8000
+
 # 复制package文件
 COPY package*.json ./
 
@@ -12,8 +15,9 @@ RUN npm ci
 # 复制源代码
 COPY . .
 
-# 构建生产版本
-RUN npm run build
+# 设置环境变量并构建生产版本
+ENV VITE_API_URL=$VITE_API_URL
+RUN node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build
 
 # 生产阶段
 FROM nginx:alpine

@@ -197,14 +197,15 @@ if (-not $envExists) {
 
 # 10. 读取环境变量
 Write-Host "`n🔑 读取环境变量..." -ForegroundColor Cyan
-if (-not (Test-Path ".env")) {
-    Write-Host "❌ .env 文件不存在，请先配置 .env 文件" -ForegroundColor Red
+$envFilePath = "backend\.env"
+if (-not (Test-Path $envFilePath)) {
+    Write-Host "❌ .env 文件不存在: $envFilePath" -ForegroundColor Red
     Write-Host "💡 运行: .\scripts\sync-azure-config.ps1" -ForegroundColor Yellow
     exit 1
 }
 
 $envVars = @{}
-Get-Content ".env" | ForEach-Object {
+Get-Content $envFilePath | ForEach-Object {
     if ($_ -match '^([^#][^=]+)=(.*)$') {
         $envVars[$matches[1].Trim()] = $matches[2].Trim()
     }
