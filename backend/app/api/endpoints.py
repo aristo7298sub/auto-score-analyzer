@@ -1,5 +1,6 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Body
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Body, Depends
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from sqlalchemy.orm import Session
 from typing import List, Dict
 import os
 import logging
@@ -7,6 +8,7 @@ import tempfile
 import io
 from pathlib import Path
 from urllib.parse import quote
+from datetime import datetime
 from app.services.file_service import FileService
 from app.models.score import StudentScore, ScoreResponse
 from app.services.analysis_service import AnalysisService
@@ -14,6 +16,9 @@ from app.services.storage_service import StorageService
 from app.services.file_storage_service import file_storage
 from app.services.export_service import ExportService
 from app.services.visualization_service import VisualizationService
+from app.core.database import get_db
+from app.core.security import get_current_user, check_quota
+from app.models.user import User, AnalysisLog, QuotaTransaction, ScoreFile
 import pandas as pd
 import uuid
 
@@ -33,23 +38,22 @@ if file_storage.storage_type == "local":
     os.makedirs("static/charts", exist_ok=True)
 
 @router.post("/upload", response_model=ScoreResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    上传成绩文件
-    
-    TODO: 未来优化 - 实现实时状态推送
-    可以使用以下方案之一：
-    1. WebSocket: 双向实时通信
-    2. Server-Sent Events (SSE): 服务器推送事件流
-    3. 轮询 + 任务队列: 后台任务 + 状态查询接口
-    
-    推荐方案：SSE
-    - 创建 /upload/stream endpoint 返回 StreamingResponse
-    - 在处理过程中 yield 状态事件
-    - 前端使用 EventSource 监听状态更新
+    上传成绩文件（需要认证）
+    - 检查用户配额
+    - 记录上传和分析日志
+    - 扣除配额
     """
+    start_time = datetime.utcnow()
+    analysis_log = None
+    
     try:
-        logger.info(f"开始处理文件上传: {file.filename}")
+        logger.info(f"用户 {current_user.username} 开始处理文件上传: {file.filename}")
         
         # 检查文件类型
         if not file.filename.endswith(('.xlsx', '.docx', '.pptx')):
@@ -101,11 +105,30 @@ async def upload_file(file: UploadFile = File(...)):
             student_count = len(student_scores)
             logger.info(f"✅ 数据解析完成！成功提取到 {student_count} 个学生的成绩数据")
             
+            # 检查配额（1个学生 = 1配额）
+            quota_cost = student_count
+            if not check_quota(current_user, quota_cost):
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=f"配额不足。需要 {quota_cost} 配额，当前余额 {current_user.quota_balance}"
+                )
+            
+            # 创建分析日志
+            analysis_log = AnalysisLog(
+                user_id=current_user.id,
+                filename=file.filename,
+                file_type=Path(file.filename).suffix,
+                student_count=student_count,
+                quota_cost=quota_cost,
+                status="processing"
+            )
+            db.add(analysis_log)
+            db.commit()
+            db.refresh(analysis_log)
+            
             # 使用批量并发分析成绩
             logger.info(f"🔍 开始智能分析 {student_count} 名学生的成绩（最多50个并发）...")
             
-            # 添加分析进度回调
-            analyzed_count = 0
             student_scores = await AnalysisService.analyze_scores_batch(student_scores, max_concurrent=50)
             
             logger.info(f"✅ 成绩分析完成！已为 {student_count} 名学生生成个性化分析报告")
@@ -114,22 +137,78 @@ async def upload_file(file: UploadFile = File(...)):
             logger.info("💾 保存成绩数据...")
             storage_service.save_scores(student_scores)
             
+            # 扣除配额（仅普通用户）
+            if not current_user.is_vip:
+                current_user.quota_balance -= quota_cost
+            current_user.quota_used += quota_cost
+            
+            # 记录配额交易
+            quota_transaction = QuotaTransaction(
+                user_id=current_user.id,
+                transaction_type="analysis_cost",
+                amount=-quota_cost,
+                balance_after=current_user.quota_balance,
+                description=f"分析文件: {file.filename}"
+            )
+            db.add(quota_transaction)
+            
+            # 更新分析日志状态
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            analysis_log.status = "success"
+            analysis_log.processing_time = processing_time
+            
+            # 保存ScoreFile记录
+            score_file = ScoreFile(
+                user_id=current_user.id,
+                filename=file.filename,
+                file_size=len(content),
+                file_type=Path(file.filename).suffix,
+                student_count=student_count,
+                file_url=file_url,
+                analyzed_at=datetime.utcnow()
+            )
+            db.add(score_file)
+            
+            db.commit()
+            
             logger.info("🎉 文件处理完成")
-            return ScoreResponse(
+            
+            response_data = ScoreResponse(
                 success=True,
                 message="文件处理成功",
                 data=student_scores,
-                original_filename=file.filename,  # 返回原始文件名
+                original_filename=file.filename,
                 processing_info={
                     "student_count": student_count,
                     "analyzed_count": student_count,
-                    "stages_completed": ["upload", "parse", "analyze", "save"],
-                    "processing_time_estimate": student_count * 0.5  # 预估处理时间（秒）
+                    "quota_cost": quota_cost,
+                    "quota_remaining": current_user.quota_balance,
+                    "processing_time": processing_time,
+                    "stages_completed": ["upload", "parse", "analyze", "save"]
                 }
             )
+            
+            logger.info(f"📤 准备返回响应 - success: {response_data.success}")
+            logger.info(f"📤 响应中的学生数量: {len(response_data.data) if response_data.data else 0}")
+            logger.info(f"📤 响应processing_info: {response_data.processing_info}")
+            
+            return response_data
         
         except Exception as e:
-            logger.error(f"处理文件失败: {str(e)}")
+            logger.error(f"❌ 处理文件失败: {str(e)}")
+            logger.error(f"❌ 错误类型: {type(e).__name__}")
+            logger.error(f"❌ 错误详情: {repr(e)}")
+            import traceback
+            logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
+            
+            # 记录失败日志
+            if analysis_log:
+                processing_time = (datetime.utcnow() - start_time).total_seconds()
+                analysis_log.status = "failed"
+                analysis_log.error_message = str(e)
+                analysis_log.processing_time = processing_time
+                db.commit()
+            
             raise HTTPException(status_code=500, detail=f"处理文件失败: {str(e)}")
         
         finally:
@@ -142,9 +221,13 @@ async def upload_file(file: UploadFile = File(...)):
                 logger.error(f"清理临时文件失败: {str(e)}")
     
     except HTTPException as he:
+        logger.error(f"❌ HTTP异常: {he.status_code} - {he.detail}")
         raise he
     except Exception as e:
-        logger.error(f"上传处理过程中发生错误: {str(e)}")
+        logger.error(f"❌ 上传处理过程中发生错误: {str(e)}")
+        logger.error(f"❌ 错误类型: {type(e).__name__}")
+        import traceback
+        logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/student/{student_name}", response_model=ScoreResponse)
