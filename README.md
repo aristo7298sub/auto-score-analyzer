@@ -1,30 +1,75 @@
-# Auto Score Analyzer
+# AI成绩分析平台
 
-基于Azure OpenAI的智能成绩分析系统，支持Excel文件上传、自动分析、可视化和报告导出。
+基于 Azure OpenAI 的智能学生成绩分析系统，支持 Excel/Word/PPT 文件上传、AI 智能分析、个性化建议生成和报告导出。
+
+## ✨ 核心功能
+
+### 🎯 成绩分析
+- **多格式支持**: 支持 .xlsx, .docx, .pptx 格式文件
+- **智能解析**: 自动识别学生姓名、总分和扣分项
+- **批量分析**: 并发处理多个学生成绩,最高支持50并发
+- **AI建议**: 基于Azure OpenAI GPT-4生成个性化学习建议
+
+### 👤 用户系统
+- **账户管理**: 注册/登录/登出
+- **配额系统**: 基于配额的使用计费(1学生=1配额)
+- **VIP特权**: VIP用户无限配额
+- **推荐奖励**: 推荐新用户获得配额奖励
+
+### 📊 管理后台
+- **用户管理**: VIP设置、账户启用/禁用、配额充值
+- **数据统计**: 实时用户数、分析总数、配额消耗统计
+- **分析日志**: 查看所有分析记录和状态
+- **隐藏访问**: 仅通过 `/admin` 路径访问,不在导航显示
+
+### 🎨 UI/UX
+- **莫兰迪配色**: 柔和舒适的教育主题色调
+- **响应式设计**: 完美适配桌面和移动设备
+- **国际化**: 中英文切换支持
+- **主题切换**: 明暗主题切换
+
+### 📥 导出功能
+- **Excel导出**: 包含详细分析数据的Excel表格
+- **Word导出**: 格式化的分析报告文档
 
 ## 🚀 快速开始
 
 ### 前置要求
 
 - Node.js 18+
-- Python 3.13+
-- Docker & Docker Compose（生产环境）
-- Azure OpenAI API密钥
+- Python 3.11+
+- Azure OpenAI API 访问权限
 
 ### 本地开发
 
 #### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/your-username/auto-score-analyzer.git
+git clone https://github.com/aristo7298sub/auto-score-analyzer.git
 cd auto-score-analyzer
 ```
 
 #### 2. 配置环境变量
 
-```bash
-cp .env.example .env
-# 编辑 .env 填入Azure OpenAI配置
+创建 `backend/.env` 文件:
+
+```env
+# Azure OpenAI 配置
+AZURE_OPENAI_ENDPOINT=your-endpoint
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_API_VERSION=2025-01-01-preview
+
+# 存储配置(本地开发使用local)
+STORAGE_TYPE=local
+
+# 应用配置
+DEBUG=True
+HOST=0.0.0.0
+PORT=8000
+BACKEND_URL=http://localhost:8000
+CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+LOG_LEVEL=INFO
 ```
 
 #### 3. 启动后端
@@ -32,10 +77,11 @@ cp .env.example .env
 ```bash
 cd backend
 pip install -r requirements.txt
-python run.py
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 后端运行在 http://localhost:8000
+API文档: http://localhost:8000/docs
 
 #### 4. 启动前端
 
@@ -47,57 +93,197 @@ npm run dev
 
 前端运行在 http://localhost:5173
 
-### Docker部署
-
-#### 1. 配置环境变量
+#### 5. 创建管理员账户
 
 ```bash
-cp .env.example .env
-# 编辑 .env 填入生产环境配置
+cd backend
+python create_admin.py
 ```
 
-#### 2. 启动服务
+按提示输入管理员邮箱和密码。
 
-```bash
-docker-compose up -d
-```
+### 生产部署
 
-服务运行在 http://localhost
-
-#### 3. 查看日志
-
-```bash
-docker-compose logs -f
-```
-
-#### 4. 停止服务
-
-```bash
-docker-compose down
-```
+详见 [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)
 
 ## 📦 项目结构
 
 ```
 auto-score-analyzer/
-├── backend/                 # Python FastAPI后端
+├── backend/                    # Python FastAPI 后端
 │   ├── app/
-│   │   ├── api/            # API路由
-│   │   ├── core/           # 核心配置
-│   │   ├── models/         # 数据模型
-│   │   └── services/       # 业务服务
-│   ├── data/               # 数据存储
-│   ├── uploads/            # 上传文件
-│   ├── exports/            # 导出文件
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/               # React + TypeScript前端
+│   │   ├── api/               # API 路由
+│   │   │   ├── auth.py        # 认证接口
+│   │   │   ├── endpoints.py   # 业务接口
+│   │   │   └── admin.py       # 管理接口
+│   │   ├── core/              # 核心配置
+│   │   │   └── config.py      # 环境配置
+│   │   ├── models/            # 数据模型
+│   │   │   ├── score.py       # 成绩模型
+│   │   │   └── user.py        # 用户模型
+│   │   └── services/          # 业务服务
+│   │       ├── analysis_service.py      # AI分析服务
+│   │       ├── file_service.py          # 文件解析服务
+│   │       ├── file_storage_service.py  # 文件存储服务
+│   │       └── export_service.py        # 导出服务
+│   ├── uploads/               # 上传文件存储
+│   ├── exports/               # 导出文件存储
+│   ├── score_analyzer.db      # SQLite 数据库
+│   ├── requirements.txt       # Python 依赖
+│   ├── create_admin.py        # 创建管理员脚本
+│   └── migrate_db.py          # 数据库迁移脚本
+│
+├── frontend/                   # React + TypeScript 前端
 │   ├── src/
-│   │   ├── components/    # React组件
-│   │   ├── pages/         # 页面
-│   │   ├── services/      # API服务
-│   │   └── types/         # 类型定义
+│   │   ├── components/        # 通用组件
+│   │   │   └── MainLayout.tsx # 主布局
+│   │   ├── pages/             # 页面组件
+│   │   │   ├── Home.tsx       # 主页(文件上传&分析)
+│   │   │   ├── Login.tsx      # 登录页
+│   │   │   ├── Register.tsx   # 注册页
+│   │   │   └── Admin.tsx      # 管理后台
+│   │   ├── services/          # API 服务
+│   │   │   └── apiClient.ts   # API 客户端
+│   │   ├── store/             # 状态管理
+│   │   │   ├── authStore.ts   # 认证状态
+│   │   │   └── appStore.ts    # 应用状态
+│   │   ├── styles/            # 样式文件
+│   │   │   ├── auth.css       # 认证页面样式
+│   │   │   ├── home.css       # 主页样式
+## 🛠️ 技术栈
+
+### 后端
+- **框架**: FastAPI 0.104+
+- **数据库**: SQLite (开发) / PostgreSQL (生产可选)
+- **ORM**: SQLAlchemy
+- **认证**: JWT + bcrypt
+- **AI**: Azure OpenAI GPT-4
+- **文件处理**: pandas, python-docx, python-pptx
+- **存储**: 本地文件系统 / Azure Blob Storage
+
+### 前端
+- **框架**: React 18 + TypeScript
+- **构建工具**: Vite 5
+- **UI组件**: Ant Design 5
+- **状态管理**: Zustand
+- **HTTP客户端**: Axios
+- **国际化**: react-i18next
+- **路由**: React Router 6
+
+## 📝 API文档
+
+启动后端后访问:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### 主要接口
+
+#### 认证
+- `POST /api/auth/register` - 用户注册
+- `POST /api/auth/login` - 用户登录
+- `GET /api/auth/me` - 获取当前用户信息
+
+#### 成绩分析
+- `POST /api/upload` - 上传并分析成绩文件
+- `GET /api/student/{name}` - 查询学生成绩
+- `POST /api/export/{format}` - 导出分析报告
+
+#### 配额管理
+- `GET /api/quota/balance` - 查询配额余额
+- `GET /api/quota/transactions` - 查询配额交易记录
+- `GET /api/quota/referral/code` - 获取推荐码
+- `GET /api/quota/referral/stats` - 查询推荐统计
+
+#### 管理员
+- `GET /api/admin/users` - 获取用户列表
+- `POST /api/admin/users/set-vip` - 设置VIP
+- `GET /api/admin/stats` - 获取系统统计
+- `GET /api/admin/logs` - 获取分析日志
+
+## 🔒 安全特性
+
+- ✅ JWT Token 认证
+- ✅ 密码 bcrypt 加密
+- ✅ CORS 跨域保护
+- ✅ SQL注入防护 (SQLAlchemy ORM)
+- ✅ 文件类型验证
+- ✅ 配额限制防滥用
+
+## 🎯 使用流程
+
+1. **注册账户**: 访问注册页面创建账户(邮箱可选)
+2. **获取配额**: 新用户默认10配额,可通过推荐获得更多
+3. **上传文件**: 支持 Excel/Word/PPT 格式的成绩文件
+4. **智能分析**: 系统自动解析并调用AI生成个性化建议
+5. **查看结果**: 实时查看分析结果和AI建议
+6. **导出报告**: 导出Excel或Word格式的分析报告
+
+## 🧪 开发相关
+
+### 数据库迁移
+
+```bash
+cd backend
+python migrate_db.py
+```
+
+### 创建管理员
+
+```bash
+cd backend
+python create_admin.py
+```
+
+### 运行测试
+
+```bash
+# 后端测试
+cd backend
+pytest
+
+# 前端测试
+cd frontend
+npm run test
+```
+
+### 代码格式化
+
+```bash
+# 后端
+cd backend
+black .
+isort .
+
+# 前端
+cd frontend
+npm run lint
+npm run format
+```
+
+## 📄 许可证
+
+MIT License
+
+## 👨‍💻 作者
+
+aristo7298sub
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request!
+
+## 📞 联系方式
+
+如有问题或建议,请通过 GitHub Issues 联系。
+│   │       └── score.ts       # 成绩类型定义
 │   ├── package.json
+│   └── vite.config.ts
+│
+├── docker-compose.yml          # Docker Compose 配置
+├── README.md                   # 项目文档
+├── DEPLOYMENT-GUIDE.md         # 部署指南
+└── LOCAL-DEVELOPMENT.md        # 本地开发指南
+```
 │   └── Dockerfile
 ├── docker-compose.yml      # Docker编排
 ├── nginx.conf             # Nginx配置

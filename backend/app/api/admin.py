@@ -1,0 +1,224 @@
+"""
+管理员API端点
+"""
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+from typing import List
+from datetime import datetime, timedelta
+
+from ..core.database import get_db
+from ..core.security import get_current_admin_user
+from ..models.user import User, AnalysisLog, QuotaTransaction
+from ..schemas import (
+    AdminUserListItem,
+    AdminSetVIP,
+    AdminStats,
+    AnalysisLogInfo
+)
+
+router = APIRouter(prefix="/admin", tags=["管理员"])
+
+
+@router.get("/users", response_model=List[AdminUserListItem])
+async def get_all_users(
+    limit: int = 100,
+    offset: int = 0,
+    search: str = None,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取所有用户列表
+    - 仅管理员可用
+    - 支持搜索和分页
+    """
+    query = db.query(User)
+    
+    # 搜索功能
+    if search:
+        query = query.filter(
+            (User.username.contains(search)) | (User.email.contains(search))
+        )
+    
+    users = (
+        query
+        .order_by(desc(User.created_at))
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    
+    return [AdminUserListItem.from_orm(u) for u in users]
+
+
+@router.post("/users/set-vip")
+async def set_user_vip(
+    data: AdminSetVIP,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    设置用户VIP状态
+    - 仅管理员可用
+    """
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+    
+    user.is_vip = data.is_vip
+    db.commit()
+    db.refresh(user)
+    
+    return {
+        "message": f"用户VIP状态已更新",
+        "user_id": user.id,
+        "username": user.username,
+        "is_vip": user.is_vip
+    }
+
+
+@router.post("/users/{user_id}/toggle-active")
+async def toggle_user_active(
+    user_id: int,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    启用/禁用用户账号
+    - 仅管理员可用
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+    
+    user.is_active = not user.is_active
+    db.commit()
+    db.refresh(user)
+    
+    return {
+        "message": f"用户已{'启用' if user.is_active else '禁用'}",
+        "user_id": user.id,
+        "username": user.username,
+        "is_active": user.is_active
+    }
+
+
+@router.get("/stats", response_model=AdminStats)
+async def get_admin_stats(
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取系统统计数据
+    - 仅管理员可用
+    """
+    # 统计用户
+    total_users = db.query(func.count(User.id)).scalar()
+    
+    # 活跃用户（最近30天登录过）
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    active_users = (
+        db.query(func.count(User.id))
+        .filter(User.last_login >= thirty_days_ago)
+        .scalar()
+    )
+    
+    # VIP用户
+    vip_users = db.query(func.count(User.id)).filter(User.is_vip == True).scalar()
+    
+    # 分析统计
+    total_analyses = db.query(func.count(AnalysisLog.id)).scalar()
+    success_analyses = (
+        db.query(func.count(AnalysisLog.id))
+        .filter(AnalysisLog.status == "success")
+        .scalar()
+    )
+    failed_analyses = (
+        db.query(func.count(AnalysisLog.id))
+        .filter(AnalysisLog.status == "failed")
+        .scalar()
+    )
+    
+    # 总配额使用
+    total_quota_used = db.query(func.sum(User.quota_used)).scalar() or 0
+    
+    return AdminStats(
+        total_users=total_users,
+        active_users=active_users,
+        vip_users=vip_users,
+        total_analyses=total_analyses,
+        success_analyses=success_analyses,
+        failed_analyses=failed_analyses,
+        total_quota_used=total_quota_used
+    )
+
+
+@router.get("/logs", response_model=List[AnalysisLogInfo])
+async def get_analysis_logs(
+    limit: int = 100,
+    offset: int = 0,
+    status_filter: str = None,
+    user_id: int = None,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取所有分析日志
+    - 仅管理员可用
+    - 支持按状态和用户筛选
+    """
+    query = db.query(AnalysisLog)
+    
+    if status_filter:
+        query = query.filter(AnalysisLog.status == status_filter)
+    
+    if user_id:
+        query = query.filter(AnalysisLog.user_id == user_id)
+    
+    logs = (
+        query
+        .order_by(desc(AnalysisLog.created_at))
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    
+    return [AnalysisLogInfo.from_orm(log) for log in logs]
+
+
+@router.get("/users/{user_id}/logs", response_model=List[AnalysisLogInfo])
+async def get_user_logs(
+    user_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取特定用户的分析日志
+    - 仅管理员可用
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+    
+    logs = (
+        db.query(AnalysisLog)
+        .filter(AnalysisLog.user_id == user_id)
+        .order_by(desc(AnalysisLog.created_at))
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    
+    return [AnalysisLogInfo.from_orm(log) for log in logs]

@@ -1,0 +1,125 @@
+/* 管理员页面样式 */
+
+/* 管理员布局 */
+.admin-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background);
+}
+
+/* 管理员导航栏 */
+.admin-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 24px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px var(--color-shadow);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.admin-navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.admin-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.admin-navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.admin-user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-surface-hover);
+  border-radius: 8px;
+}
+
+.toolbar-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--color-surface-hover);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+}
+
+.toolbar-btn:hover {
+  background: var(--color-border);
+  transform: translateY(-1px);
+}
+
+/* 管理员内容区 */
+.admin-page {
+  flex: 1;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.stats-row {
+  margin-bottom: 24px;
+}
+
+.stats-row .ant-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.stats-row .ant-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.ant-table {
+  background: var(--color-surface);
+  border-radius: 8px;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--color-surface-hover);
+  font-weight: 600;
+}
+
+.admin-page .ant-tabs {
+  background: var(--color-surface);
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.admin-page .ant-tabs-tab {
+  padding: 12px 16px;
+  font-size: 15px;
+}
+
+.admin-page .ant-tabs-tab-active {
+  font-weight: 600;
+}

@@ -56,6 +56,14 @@ uploads/
 exports/
 static/charts/
 
+# 数据库文件
+backend/*.db
+backend/*.db-journal
+backend/*.db-shm
+backend/*.db-wal
+*.sqlite
+*.sqlite3
+
 # 部署相关敏感信息
 scripts/deploy-*.log
 deployment-url.txt
