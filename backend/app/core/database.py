@@ -7,7 +7,8 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # 数据库URL配置
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./score_analyzer.db")
+# 容器环境中，确保SQLite文件存储在有写权限的目录
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/data/score_analyzer.db")
 
 # 创建数据库引擎
 engine = create_engine(
