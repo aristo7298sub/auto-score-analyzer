@@ -20,8 +20,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用代码
 COPY . .
 
+# 设置启动脚本权限
+RUN chmod +x start.sh
+
 # 创建必要的目录
-RUN mkdir -p /app/data /app/uploads /app/exports /app/static/charts
+RUN mkdir -p /app/data /app/uploads /app/exports /app/static/charts /app/scripts
 
 # 创建非root用户
 RUN useradd -m -u 1000 appuser && \
@@ -38,4 +41,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # 启动命令
-CMD ["python", "run.py"]
+CMD ["./start.sh"]
