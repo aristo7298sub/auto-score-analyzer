@@ -59,7 +59,6 @@ interface AnalysisLog {
 }
 
 const Admin: React.FC = () => {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { language, theme, toggleTheme, setLanguage } = useAppStore();
