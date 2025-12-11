@@ -104,6 +104,7 @@ class ScoreFile(Base):
     # 分析结果
     student_count = Column(Integer, nullable=False)
     analysis_completed = Column(Boolean, default=False)
+    analysis_result = Column(Text, nullable=True)  # JSON格式的完整分析结果
     
     # 时间戳
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -32,6 +32,11 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
 
       login: (token: string, user: User) => {
+        // 登录时清空成绩缓存（只保留新会话的数据）
+        localStorage.removeItem('score-storage');
+        // 同时清空 sessionStorage 标记
+        sessionStorage.setItem('session-id', Date.now().toString());
+        
         set({
           token,
           user,
@@ -40,6 +45,9 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        // 登出时清空成绩缓存
+        localStorage.removeItem('score-storage');
+        
         set({
           token: null,
           user: null,

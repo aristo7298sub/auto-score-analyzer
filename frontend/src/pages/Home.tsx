@@ -1,32 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Upload, Card, Input, Button, List, message, Tag, Empty, Spin } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { StudentScore } from '../types/score';
 import { scoreApi } from '../services/apiClient';
 import { useAuthStore } from '../store/authStore';
+import { useScoreStore, FileGroup } from '../store/scoreStore';
 import '../styles/home.css';
 
 const { Dragger } = Upload;
 
-interface FileGroup {
-  id: string;
-  filename: string;
-  scores: StudentScore[];
-  uploadTime: string;
-  status: 'uploading' | 'analyzing' | 'complete' | 'error';
-  statusMessage?: string;
-  studentCount?: number;
-  quotaCost?: number;
-}
-
 const Home: React.FC = () => {
   const { t } = useTranslation();
   const { user, updateUser } = useAuthStore();
-  const [fileGroups, setFileGroups] = useState<FileGroup[]>([]);
-  const [activeFileId, setActiveFileId] = useState<string>('');
+  const { 
+    fileGroups, 
+    activeFileId, 
+    setScores, 
+    setFileGroups, 
+    setActiveFileId 
+  } = useScoreStore();
+  
   const [searchText, setSearchText] = useState('');
   const [filteredScores, setFilteredScores] = useState<StudentScore[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // 页面加载时，检查会话 ID，如果是新会话则清空数据
+  useEffect(() => {
+    const currentSessionId = sessionStorage.getItem('session-id');
+    const storedSessionId = localStorage.getItem('last-session-id');
+    
+    // 如果是新会话，清空所有数据
+    if (currentSessionId && currentSessionId !== storedSessionId) {
+      setFileGroups([]);
+      setActiveFileId('');
+      setFilteredScores([]);
+      localStorage.setItem('last-session-id', currentSessionId);
+      return;
+    }
+    
+    // 否则恢复之前的数据
+    if (activeFileId && fileGroups.length > 0) {
+      const activeGroup = fileGroups.find(g => g.id === activeFileId);
+      if (activeGroup && activeGroup.scores.length > 0) {
+        setFilteredScores(activeGroup.scores);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 只在组件挂载时执行一次
 
   const handleUpload = async (file: File) => {
     const fileId = `${Date.now()}-${file.name}`;
@@ -79,7 +99,10 @@ const Home: React.FC = () => {
       
       setFilteredScores(scores!); // 显示所有学生
 
-      // 4. 更新用户配额
+      // 4. 保存到持久化 store
+      setScores(scores!, file.name, processing_info);
+
+      // 5. 更新用户配额
       if (user && processing_info?.quota_remaining !== undefined) {
         updateUser({ quota_balance: processing_info.quota_remaining });
       }
@@ -187,6 +210,9 @@ const Home: React.FC = () => {
             <div className="upload-progress">
               <Spin />
               <span className="progress-text">{activeGroup.statusMessage}</span>
+              <div style={{ marginTop: 12, color: '#ff7700', fontSize: 13 }}>
+                ⚠️ 正在分析中，请勿切换到其他页面，否则可能影响加载速度
+              </div>
             </div>
           )}
         </div>
