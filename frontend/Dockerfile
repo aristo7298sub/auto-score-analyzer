@@ -3,8 +3,8 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# 构建参数
-ARG VITE_API_URL=http://localhost:8000
+# 构建参数 - 可以在构建时通过 --build-arg 传入
+ARG VITE_API_URL
 
 # 复制package文件
 COPY package*.json ./
@@ -12,11 +12,16 @@ COPY package*.json ./
 # 安装所有依赖（包括devDependencies，用于构建）
 RUN npm ci
 
-# 复制源代码
+# 复制源代码（包括 .env.production）
 COPY . .
 
-# 设置环境变量并构建生产版本
-ENV VITE_API_URL=$VITE_API_URL
+# 如果通过 ARG 传入了 VITE_API_URL，则覆盖 .env.production
+# 否则使用 .env.production 中的默认值
+RUN if [ -n "$VITE_API_URL" ]; then \
+      echo "VITE_API_URL=$VITE_API_URL" > .env.production; \
+    fi
+
+# 构建生产版本（会自动使用 .env.production）
 RUN node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build
 
 # 生产阶段
