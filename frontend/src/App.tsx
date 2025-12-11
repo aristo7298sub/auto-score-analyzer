@@ -10,6 +10,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
+import History from './pages/History';
 import Admin from './pages/Admin';
 import './i18n/config';
 import './styles/global.css';
@@ -57,7 +58,7 @@ function App() {
             }
           >
             <Route index element={<Home />} />
-            <Route path="history" element={<div className="page-placeholder">历史记录页面（开发中）</div>} />
+            <Route path="history" element={<History />} />
             <Route path="quota" element={<div className="page-placeholder">配额管理页面（开发中）</div>} />
           </Route>
 

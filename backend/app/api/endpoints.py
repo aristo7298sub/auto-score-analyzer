@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Body, Dep
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict
+from pydantic import BaseModel
 import os
 import logging
 import tempfile
@@ -157,14 +158,19 @@ async def upload_file(
             analysis_log.status = "success"
             analysis_log.processing_time = processing_time
             
-            # 保存ScoreFile记录
+            # 保存ScoreFile记录（包含完整的分析结果JSON）
+            import json
+            analysis_result_json = json.dumps([score.dict() for score in student_scores], ensure_ascii=False)
+            
             score_file = ScoreFile(
                 user_id=current_user.id,
                 filename=file.filename,
                 file_size=len(content),
-                file_type=Path(file.filename).suffix,
+                file_type=Path(file.filename).suffix.lstrip('.'),  # 去掉开头的点
                 student_count=student_count,
                 file_url=file_url,
+                analysis_completed=True,
+                analysis_result=analysis_result_json,
                 analyzed_at=datetime.utcnow()
             )
             db.add(score_file)
@@ -265,18 +271,35 @@ async def search_students(keyword: str = Query(..., description="搜索关键词
 @router.post("/export/{format}")
 async def export_scores(
     format: str,
-    scores: List[StudentScore] = Body(...),
-    original_filename: str = Body(default="")
+    request: Dict = Body(...)
 ):
     """
     导出成绩数据 - 直接返回文件流
     
     Args:
         format: 导出格式 (xlsx 或 docx)
-        scores: 要导出的学生成绩列表
-        original_filename: 原始上传的文件名
+        request: 包含成绩列表和原始文件名的请求体
     """
     try:
+        logger.info(f"收到导出请求，格式: {format}")
+        logger.info(f"请求体类型: {type(request)}")
+        logger.info(f"请求体内容: {request}")
+        
+        # 提取数据
+        scores_data = request.get('scores', [])
+        original_filename = request.get('original_filename', '')
+        
+        logger.info(f"scores 数量: {len(scores_data)}")
+        
+        # 将字典转换为 StudentScore 对象
+        scores = []
+        for score_dict in scores_data:
+            try:
+                scores.append(StudentScore(**score_dict))
+            except Exception as e:
+                logger.error(f"转换 StudentScore 失败: {e}, 数据: {score_dict}")
+                raise
+        
         # 生成文件名
         base_name = original_filename.rsplit('.', 1)[0] if original_filename else "成绩分析报告"
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -337,9 +360,13 @@ async def export_scores(
             if os.path.exists(temp_path):
                 os.remove(temp_path)
                 
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
         logger.error(f"导出失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"详细错误: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
 
 @router.get("/charts", response_model=Dict[str, str])
 async def get_charts():
@@ -372,4 +399,210 @@ async def get_chart(chart_type: str):
             "chart_type": chart_type
         })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 历史记录相关 API ====================
+
+@router.get("/files")
+async def get_user_files(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取当前用户的历史文件列表（分页）
+    """
+    try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
+        # 查询总数
+        total = db.query(ScoreFile).filter(ScoreFile.user_id == current_user.id).count()
+        
+        # 查询文件列表（按上传时间倒序）
+        files = db.query(ScoreFile).filter(
+            ScoreFile.user_id == current_user.id
+        ).order_by(
+            ScoreFile.uploaded_at.desc()
+        ).offset(offset).limit(page_size).all()
+        
+        # 格式化返回数据
+        file_list = []
+        for file in files:
+            file_list.append({
+                "id": file.id,
+                "filename": file.filename,
+                "file_type": file.file_type,
+                "file_size": file.file_size,
+                "student_count": file.student_count,
+                "analysis_completed": file.analysis_completed,
+                "uploaded_at": file.uploaded_at.isoformat() + 'Z' if file.uploaded_at else None,
+                "analyzed_at": file.analyzed_at.isoformat() + 'Z' if file.analyzed_at else None,
+            })
+        
+        return JSONResponse({
+            "success": True,
+            "data": file_list,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取历史文件列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取历史文件列表失败: {str(e)}")
+
+
+@router.get("/files/{file_id}")
+async def get_file_detail(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取指定文件的详细信息（包括学生成绩数据）
+    """
+    try:
+        # 查询文件记录
+        file_record = db.query(ScoreFile).filter(
+            ScoreFile.id == file_id,
+            ScoreFile.user_id == current_user.id
+        ).first()
+        
+        if not file_record:
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        # 解析保存的分析结果JSON
+        import json
+        students_data = []
+        if file_record.analysis_result:
+            try:
+                students_data = json.loads(file_record.analysis_result)
+            except Exception as e:
+                logger.warning(f"解析分析结果失败: {str(e)}")
+        
+        return JSONResponse({
+            "success": True,
+            "data": {
+                "id": file_record.id,
+                "filename": file_record.filename,
+                "file_type": file_record.file_type,
+                "file_size": file_record.file_size,
+                "file_url": file_record.file_url,
+                "student_count": file_record.student_count,
+                "analysis_completed": file_record.analysis_completed,
+                "students": students_data,
+                "uploaded_at": file_record.uploaded_at.isoformat() + 'Z' if file_record.uploaded_at else None,
+                "analyzed_at": file_record.analyzed_at.isoformat() + 'Z' if file_record.analyzed_at else None,
+                # "students": []  # TODO: 添加学生成绩数据
+            }
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取文件详情失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取文件详情失败: {str(e)}")
+
+
+@router.delete("/files/{file_id}")
+async def delete_file(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    删除指定的历史文件记录
+    """
+    try:
+        # 查询文件记录
+        file_record = db.query(ScoreFile).filter(
+            ScoreFile.id == file_id,
+            ScoreFile.user_id == current_user.id
+        ).first()
+        
+        if not file_record:
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        # 删除云存储中的文件（如果有）
+        if file_record.file_url:
+            try:
+                # 从 URL 中提取 blob 名称
+                blob_name = file_record.file_url.split('/')[-1] if '/' in file_record.file_url else file_record.file_url
+                await file_storage.delete_file(blob_name, file_type="upload")
+                logger.info(f"已删除云存储文件: {blob_name}")
+            except Exception as e:
+                logger.warning(f"删除云存储文件失败: {str(e)}")
+        
+        # 删除数据库记录
+        db.delete(file_record)
+        db.commit()
+        
+        return JSONResponse({
+            "success": True,
+            "message": "文件删除成功"
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除文件失败: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"删除文件失败: {str(e)}")
+
+
+@router.post("/files/batch-delete")
+async def batch_delete_files(
+    file_ids: List[int] = Body(..., embed=True),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    批量删除历史文件记录
+    """
+    try:
+        deleted_count = 0
+        failed_ids = []
+        
+        for file_id in file_ids:
+            try:
+                # 查询文件记录
+                file_record = db.query(ScoreFile).filter(
+                    ScoreFile.id == file_id,
+                    ScoreFile.user_id == current_user.id
+                ).first()
+                
+                if file_record:
+                    # 删除云存储中的文件（如果有）
+                    if file_record.file_url:
+                        try:
+                            # 从 URL 中提取 blob 名称
+                            blob_name = file_record.file_url.split('/')[-1] if '/' in file_record.file_url else file_record.file_url
+                            await file_storage.delete_file(blob_name, file_type="upload")
+                            logger.info(f"已删除云存储文件: {blob_name}")
+                        except Exception as e:
+                            logger.warning(f"删除云存储文件失败: {str(e)}")
+                    
+                    # 删除数据库记录
+                    db.delete(file_record)
+                    deleted_count += 1
+                else:
+                    failed_ids.append(file_id)
+            except Exception as e:
+                logger.error(f"删除文件 {file_id} 失败: {str(e)}")
+                failed_ids.append(file_id)
+        
+        db.commit()
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"成功删除 {deleted_count} 个文件",
+            "deleted_count": deleted_count,
+            "failed_ids": failed_ids
+        })
+    except Exception as e:
+        logger.error(f"批量删除文件失败: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"批量删除文件失败: {str(e)}") 
