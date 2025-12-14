@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Tabs, Table, Button, Input, Tag, Space, Statistic, Row, Col, message, Modal, InputNumber, Badge } from 'antd';
+import { Card, Tabs, Table, Button, Input, Tag, Space, Statistic, Row, Col, message, Modal, InputNumber, Badge, Popconfirm } from 'antd';
 import { 
   UserOutlined, 
   TeamOutlined, 
@@ -130,6 +130,16 @@ const Admin: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async (userId: number) => {
+    try {
+      await adminApi.deleteUser(userId);
+      message.success('用户已删除');
+      loadUsers();
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || '删除失败');
+    }
+  };
+
   const handleAddQuota = async () => {
     if (!selectedUser) return;
     
@@ -246,6 +256,24 @@ const Admin: React.FC = () => {
           >
             加配额
           </Button>
+
+          <Popconfirm
+            title="确认删除用户"
+            description={`删除后无法恢复（将同时删除该用户的历史记录/日志）。确认删除 ${record.username} 吗？`}
+            okText="确认删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDeleteUser(record.id)}
+            disabled={record.id === user?.id}
+          >
+            <Button
+              size="small"
+              danger
+              disabled={record.id === user?.id}
+            >
+              删除用户
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },

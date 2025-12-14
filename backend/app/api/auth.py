@@ -3,6 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from ..core.database import get_db
@@ -42,52 +43,61 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
                 detail="邮箱已被注册"
             )
     
-    # 创建新用户
-    new_user = User(
-        username=user_data.username,
-        email=user_data.email,  # 可以为 None
-        hashed_password=get_password_hash(user_data.password),
-        referral_code=generate_referral_code(),
-        quota_balance=10,  # 新用户初始配额
-    )
-    
-    # 处理引荐码
-    referrer = None
-    if user_data.referral_code:
-        referrer = db.query(User).filter(User.referral_code == user_data.referral_code).first()
-        if referrer:
-            new_user.referred_by = referrer.id
-            # 给引荐人增加配额和计数
-            referrer.quota_balance += 5
-            referrer.referral_count += 1
-            
-            # 记录引荐人的配额交易
-            referrer_transaction = QuotaTransaction(
-                user_id=referrer.id,
-                transaction_type="referral",
-                amount=5,
-                balance_after=referrer.quota_balance,
-                description=f"引荐用户 {user_data.username} 注册"
-            )
-            db.add(referrer_transaction)
-            
-            # 给新用户额外配额
-            new_user.quota_balance += 5
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    # 记录新用户的初始配额交易
-    initial_transaction = QuotaTransaction(
-        user_id=new_user.id,
-        transaction_type="register",
-        amount=new_user.quota_balance,
-        balance_after=new_user.quota_balance,
-        description="新用户注册奖励" + (f" + 引荐奖励" if referrer else "")
-    )
-    db.add(initial_transaction)
-    db.commit()
+    try:
+        # 创建新用户
+        new_user = User(
+            username=user_data.username,
+            email=user_data.email,  # 可以为 None
+            hashed_password=get_password_hash(user_data.password),
+            referral_code=generate_referral_code(),
+            quota_balance=10,  # 新用户初始配额
+        )
+
+        # 处理引荐码
+        referrer = None
+        if user_data.referral_code:
+            referrer = db.query(User).filter(User.referral_code == user_data.referral_code).first()
+            if referrer:
+                new_user.referred_by = referrer.id
+                # 给引荐人增加配额和计数
+                referrer.quota_balance += 5
+                referrer.referral_count += 1
+
+                # 记录引荐人的配额交易
+                referrer_transaction = QuotaTransaction(
+                    user_id=referrer.id,
+                    transaction_type="referral",
+                    amount=5,
+                    balance_after=referrer.quota_balance,
+                    description=f"引荐用户 {user_data.username} 注册",
+                )
+                db.add(referrer_transaction)
+
+                # 给新用户额外配额
+                new_user.quota_balance += 5
+
+        db.add(new_user)
+        db.flush()  # 获取 new_user.id
+
+        # 记录新用户的初始配额交易
+        initial_transaction = QuotaTransaction(
+            user_id=new_user.id,
+            transaction_type="register",
+            amount=new_user.quota_balance,
+            balance_after=new_user.quota_balance,
+            description="新用户注册奖励" + (f" + 引荐奖励" if referrer else ""),
+        )
+        db.add(initial_transaction)
+
+        db.commit()
+        db.refresh(new_user)
+    except IntegrityError as e:
+        db.rollback()
+        # 兜底：并发注册/唯一约束冲突等场景，转成 400
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="注册信息冲突，请检查用户名/邮箱是否已被使用") from e
+    except Exception as e:
+        db.rollback()
+        raise
     
     # 生成JWT token
     access_token = create_access_token(data={"sub": new_user.username})
@@ -123,9 +133,14 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
         )
     
     # 更新最后登录时间
-    user.last_login = datetime.utcnow()
-    db.commit()
-    db.refresh(user)
+    try:
+        user.last_login = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        # 记录错误但允许登录继续（可能是数据库只读或锁定）
+        print(f"Warning: Failed to update last_login: {e}")
+        db.rollback()
     
     # 生成JWT token
     access_token = create_access_token(data={"sub": user.username})

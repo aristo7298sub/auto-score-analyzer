@@ -61,6 +61,10 @@ backend/*.db
 backend/*.db-journal
 backend/*.db-shm
 backend/*.db-wal
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 

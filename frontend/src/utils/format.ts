@@ -20,8 +20,13 @@ export const formatFileSize = (bytes: number | null | undefined): string => {
  */
 export const formatDateTime = (isoString: string | null | undefined): string => {
     if (!isoString) return '-';
-    
-    const date = new Date(isoString);
+
+    const date = typeof isoString === 'string' || typeof isoString === 'number'
+        ? new Date(isoString as any)
+        : new Date(String(isoString));
+
+    if (Number.isNaN(date.getTime())) return '-';
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -41,6 +46,7 @@ export const formatRelativeTime = (isoString: string | null | undefined): string
     if (!isoString) return '-';
     
     const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return '-';
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     

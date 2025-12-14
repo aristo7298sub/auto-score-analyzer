@@ -19,6 +19,7 @@ azure-identity>=1.15.0
 # 认证与数据库
 sqlalchemy>=2.0.0
 alembic>=1.13.0
-bcrypt>=4.1.0
+psycopg2-binary>=2.9.9
+bcrypt==3.2.2
 pyjwt>=2.8.0
 email-validator>=2.1.0

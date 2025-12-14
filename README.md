@@ -128,10 +128,9 @@ auto-score-analyzer/
 │   │       └── export_service.py        # 导出服务
 │   ├── uploads/               # 上传文件存储
 │   ├── exports/               # 导出文件存储
-│   ├── score_analyzer.db      # SQLite 数据库
 │   ├── requirements.txt       # Python 依赖
 │   ├── create_admin.py        # 创建管理员脚本
-│   └── migrate_db.py          # 数据库迁移脚本
+│   └── alembic/               # 数据库迁移（Alembic）
 │
 ├── frontend/                   # React + TypeScript 前端
 │   ├── src/
@@ -224,7 +223,7 @@ auto-score-analyzer/
 
 ```bash
 cd backend
-python migrate_db.py
+alembic upgrade head
 ```
 
 ### 创建管理员

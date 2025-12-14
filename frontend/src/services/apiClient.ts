@@ -94,6 +94,9 @@ export const adminApi = {
   
   addQuota: (userId: number, amount: number, description?: string) =>
     apiClient.post('/api/quota/admin/add', { user_id: userId, amount, description }),
+
+  deleteUser: (userId: number) =>
+    apiClient.delete(`/api/admin/users/${userId}`),
 };
 
 // 成绩分析API

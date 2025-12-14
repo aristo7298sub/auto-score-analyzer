@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Body, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Body, Depends, status
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict
@@ -199,7 +199,12 @@ async def upload_file(
             logger.info(f"📤 响应processing_info: {response_data.processing_info}")
             
             return response_data
-        
+
+        except HTTPException as he:
+            # Propagate expected HTTP errors (e.g. quota insufficient) without masking them as 500.
+            logger.error(f"❌ HTTP异常: {he.status_code} - {he.detail}")
+            raise he
+
         except Exception as e:
             logger.error(f"❌ 处理文件失败: {str(e)}")
             logger.error(f"❌ 错误类型: {type(e).__name__}")
@@ -209,11 +214,19 @@ async def upload_file(
             
             # 记录失败日志
             if analysis_log:
+                # Make sure the session is usable even if an earlier commit failed.
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
                 processing_time = (datetime.utcnow() - start_time).total_seconds()
                 analysis_log.status = "failed"
                 analysis_log.error_message = str(e)
                 analysis_log.processing_time = processing_time
-                db.commit()
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
             
             raise HTTPException(status_code=500, detail=f"处理文件失败: {str(e)}")
         
@@ -438,8 +451,8 @@ async def get_user_files(
                 "file_size": file.file_size,
                 "student_count": file.student_count,
                 "analysis_completed": file.analysis_completed,
-                "uploaded_at": file.uploaded_at.isoformat() + 'Z' if file.uploaded_at else None,
-                "analyzed_at": file.analyzed_at.isoformat() + 'Z' if file.analyzed_at else None,
+                "uploaded_at": file.uploaded_at.isoformat() if file.uploaded_at else None,
+                "analyzed_at": file.analyzed_at.isoformat() if file.analyzed_at else None,
             })
         
         return JSONResponse({
@@ -496,8 +509,8 @@ async def get_file_detail(
                 "student_count": file_record.student_count,
                 "analysis_completed": file_record.analysis_completed,
                 "students": students_data,
-                "uploaded_at": file_record.uploaded_at.isoformat() + 'Z' if file_record.uploaded_at else None,
-                "analyzed_at": file_record.analyzed_at.isoformat() + 'Z' if file_record.analyzed_at else None,
+                "uploaded_at": file_record.uploaded_at.isoformat() if file_record.uploaded_at else None,
+                "analyzed_at": file_record.analyzed_at.isoformat() if file_record.analyzed_at else None,
                 # "students": []  # TODO: 添加学生成绩数据
             }
         })

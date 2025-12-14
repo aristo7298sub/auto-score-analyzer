@@ -31,7 +31,7 @@ class Token(BaseModel):
 class UserInfo(BaseModel):
     id: int
     username: str
-    email: str
+    email: Optional[EmailStr] = None
     is_vip: bool
     is_admin: bool
     quota_balance: int
@@ -78,7 +78,7 @@ class AnalysisLogInfo(BaseModel):
 class AdminUserListItem(BaseModel):
     id: int
     username: str
-    email: str
+    email: Optional[EmailStr] = None
     is_vip: bool
     is_admin: bool
     is_active: bool

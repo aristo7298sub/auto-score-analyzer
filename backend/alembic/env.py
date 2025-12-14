@@ -25,7 +25,12 @@ target_metadata = Base.metadata
 
 # 从环境变量获取数据库URL
 def get_url():
-    return os.getenv("DATABASE_URL", "sqlite:///./score_analyzer.db")
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Alembic migrations require an explicit database URL."
+        )
+    return url
 
 
 def run_migrations_offline() -> None:

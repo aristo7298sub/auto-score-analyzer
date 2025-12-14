@@ -1,6 +1,7 @@
 """
 管理员API端点
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -10,12 +11,15 @@ from datetime import datetime, timedelta
 from ..core.database import get_db
 from ..core.security import get_current_admin_user
 from ..models.user import User, AnalysisLog, QuotaTransaction
+from ..services.file_storage_service import file_storage
 from ..schemas import (
     AdminUserListItem,
     AdminSetVIP,
     AdminStats,
     AnalysisLogInfo
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["管理员"])
 
@@ -107,6 +111,73 @@ async def toggle_user_active(
         "user_id": user.id,
         "username": user.username,
         "is_active": user.is_active
+    }
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    删除用户（及其关联数据）
+    - 仅管理员可用
+    - 防止删除自己
+    - 清理 referred_by 引用以避免外键约束
+    - 尝试删除该用户上传的文件（best-effort）
+    """
+    if user_id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能删除当前登录的管理员账号"
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    # 解除其他用户对该用户的引用（避免删除时外键冲突）
+    db.query(User).filter(User.referred_by == user_id).update({User.referred_by: None})
+
+    # 如果该用户是被引荐用户，尽量回滚推荐人计数（best-effort）
+    if user.referred_by:
+        referrer = db.query(User).filter(User.id == user.referred_by).first()
+        if referrer and (referrer.referral_count or 0) > 0:
+            referrer.referral_count = max(0, (referrer.referral_count or 0) - 1)
+
+    # 删除云存储中的上传文件（best-effort）
+    try:
+        # 先触发加载关系，避免删除后再访问
+        score_files = list(getattr(user, "score_files", []) or [])
+        for sf in score_files:
+            if not getattr(sf, "file_url", None):
+                continue
+            try:
+                blob_name = sf.file_url.split('/')[-1] if '/' in sf.file_url else sf.file_url
+                await file_storage.delete_file(blob_name, file_type="upload")
+            except Exception as e:
+                logger.warning(f"删除用户文件失败 user_id={user_id} blob={getattr(sf, 'file_url', None)} err={e}")
+    except Exception as e:
+        logger.warning(f"枚举/删除用户文件失败 user_id={user_id} err={e}")
+
+    username = user.username
+    was_admin = user.is_admin
+    was_vip = user.is_vip
+
+    db.delete(user)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "用户删除成功",
+        "user_id": user_id,
+        "username": username,
+        "was_admin": was_admin,
+        "was_vip": was_vip,
     }
 
 

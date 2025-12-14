@@ -30,9 +30,16 @@ app = FastAPI(
 )
 
 # 配置CORS
+origins = [
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "https://xscore-app.com",
+    "https://www.xscore-app.com",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应设置具体域名
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
