@@ -2,6 +2,18 @@
 
 基于 Azure OpenAI 的智能学生成绩分析系统，支持 Excel/Word/PPT 文件上传、AI 智能分析、个性化建议生成和报告导出。
 
+## 🌍 环境模式（同一套代码，靠环境变量切换）
+
+本仓库长期维护三种运行方式：
+
+- **A. Local-All（纯本地，除 Azure OpenAI 外）**：本地 SQLite + 本地文件存储
+- **B. Hybrid（本地代码 + 云端数据库）**：本地跑前后端，数据库（以及可选的文件存储）走云端
+- **C. Cloud-All（纯云端）**：Azure Container Apps（生产/演示）
+
+详细说明与发布模板见：
+- [ENVIRONMENTS.md](ENVIRONMENTS.md)
+- [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md)
+
 ## ✨ 核心功能
 
 ### 🎯 成绩分析
@@ -51,14 +63,23 @@ cd auto-score-analyzer
 
 #### 2. 配置环境变量
 
-创建 `backend/.env` 文件:
+创建 `backend/.env` 文件（不要提交到 GitHub）：
+
+- Local-All：参考模板 `backend/.env.local.example`
+- Hybrid：参考模板 `backend/.env.clouddb.example`
 
 ```env
 # Azure OpenAI 配置
 AZURE_OPENAI_ENDPOINT=your-endpoint
 AZURE_OPENAI_API_KEY=your-api-key
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
-AZURE_OPENAI_API_VERSION=2025-01-01-preview
+AZURE_OPENAI_API_VERSION=2023-05-15
+
+# 数据库
+# Local-All 示例：
+DATABASE_URL=sqlite:///./data/score_analyzer.db
+# Hybrid 示例：
+# DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@HOST:5432/DBNAME
 
 # 存储配置(本地开发使用local)
 STORAGE_TYPE=local
@@ -68,7 +89,8 @@ DEBUG=True
 HOST=0.0.0.0
 PORT=8000
 BACKEND_URL=http://localhost:8000
-CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+# 逗号分隔："http://localhost:3000,http://localhost:5173"
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 LOG_LEVEL=INFO
 ```
 
@@ -77,7 +99,7 @@ LOG_LEVEL=INFO
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python run.py
 ```
 
 后端运行在 http://localhost:8000
@@ -91,16 +113,11 @@ npm install
 npm run dev
 ```
 
-前端运行在 http://localhost:5173
+前端运行端口以 Vite 输出为准（默认配置为 http://localhost:3000）。
 
-#### 5. 创建管理员账户
+#### 5. 设置管理员（可选）
 
-```bash
-cd backend
-python create_admin.py
-```
-
-按提示输入管理员邮箱和密码。
+管理员权限需要在数据库中将用户的 `is_admin` 设置为 `true`，详见 [ADMIN-GUIDE.md](ADMIN-GUIDE.md)。
 
 ### 生产部署
 
@@ -129,7 +146,6 @@ auto-score-analyzer/
 │   ├── uploads/               # 上传文件存储
 │   ├── exports/               # 导出文件存储
 │   ├── requirements.txt       # Python 依赖
-│   ├── create_admin.py        # 创建管理员脚本
 │   └── alembic/               # 数据库迁移（Alembic）
 │
 ├── frontend/                   # React + TypeScript 前端
@@ -226,12 +242,9 @@ cd backend
 alembic upgrade head
 ```
 
-### 创建管理员
+### 设置管理员
 
-```bash
-cd backend
-python create_admin.py
-```
+详见 [ADMIN-GUIDE.md](ADMIN-GUIDE.md)（包含 SQL 示例）。
 
 ### 运行测试
 

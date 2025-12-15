@@ -10,7 +10,7 @@
 
 ## 📋 前提条件
 
-- Python 3.13+
+- Python 3.11+
 - Node.js 18+
 - 已配置 `backend/.env` 文件（该文件不提交到 GitHub）
 
@@ -69,6 +69,8 @@ npm run dev
 ```
 
 前端运行在：**http://localhost:5173**
+
+> 注：本仓库默认 Vite 端口为 3000；请以终端输出的实际地址为准。
 
 ### 停止服务
 
@@ -140,7 +142,7 @@ git commit -m "Your changes description"
 git push
 ```
 
-推送后会自动触发GitHub Actions部署到Azure VM！
+推送代码不会自动发布到生产环境；Cloud-All（Azure Container Apps）发布方式请参考 [ENVIRONMENTS.md](ENVIRONMENTS.md) 与 [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)。
 
 ---
 
@@ -177,7 +179,7 @@ docker-compose down
 ### 环境变量
 
 - **本地开发：** 使用 `backend/.env`
-- **生产环境：** 使用 VM上的 `/opt/auto-score-analyzer/.env`
+- **生产环境：** 使用 Azure Container Apps 注入的环境变量
 - 两个文件**独立配置**，互不影响
 
 ### 端口占用
