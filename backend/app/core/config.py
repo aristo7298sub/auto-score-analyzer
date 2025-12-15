@@ -5,6 +5,12 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "学生成绩分析系统"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+
+    # 数据库配置
+    # 默认使用相对路径：
+    # - 本地运行（cd backend） => backend/data/score_analyzer.db
+    # - 容器运行（WORKDIR=/app） => /app/data/score_analyzer.db
+    DATABASE_URL: str = "sqlite:///./data/score_analyzer.db"
     
     # Azure OpenAI配置
     AZURE_OPENAI_API_KEY: Optional[str] = None

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.database import engine, Base
+from app.core.config import settings
 from app.api import router as api_router
 from app.api.auth import router as auth_router
 from app.api.quota import router as quota_router
@@ -30,12 +31,20 @@ app = FastAPI(
 )
 
 # 配置CORS
-origins = [
+# - 默认兼容本地 Vite(5173/3000) 与生产域名
+# - 如需覆盖，请在环境变量/ backend/.env 中设置：CORS_ORIGINS="https://a.com,http://localhost:3000"
+default_origins = [
     "http://localhost:5173",
+    "http://localhost:3000",
     "http://localhost:8000",
     "https://xscore-app.com",
     "https://www.xscore-app.com",
 ]
+
+if settings.CORS_ORIGINS:
+    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+else:
+    origins = default_origins
 
 app.add_middleware(
     CORSMiddleware,

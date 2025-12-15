@@ -6,6 +6,36 @@
 
 ---
 
+## 如何告诉 Copilot：要开发 / 测试哪个环境
+
+后续你给需求时，只要在开头补上 3–5 行“目标环境 + 验收方式”，我就能按你的预期实现和验证。
+
+**环境代号（与本文一致）**
+- A = Local-All（纯本地，除 Azure OpenAI 外）
+- B = Hybrid（本地代码 + 云端数据库）
+- C = Cloud-All（纯云端：Azure Container Apps）
+
+**请求模板（复制后填空即可）**
+```text
+ENV: A | B | C
+Component: backend | frontend | both
+Run: local-process | docker-compose | ACA-deploy
+Verify:
+	- Steps: （复现/操作步骤）
+	- Expected: （期望结果）
+Config:
+	- Backend env file: backend/.env (local only, do not commit)
+	- Template reference: backend/.env.local.example | backend/.env.clouddb.example
+Notes:
+	- Do NOT paste real secrets/connection strings into chat; keep them only in your local .env.
+```
+
+**建议约定**
+- 日常开发/联调默认用 A；需要与线上共享历史/配额/账号数据时用 B（建议专用测试账号）；发版/演示用 C。
+- 验收优先写清楚“测哪个页面/接口 + 具体步骤 + 期望”，比描述实现细节更可靠。
+
+---
+
 ## A. 纯本地环境（Local-All，除 Azure OpenAI 外）
 
 适用：日常功能开发/联调；希望所有数据、文件都只在本机。

@@ -1,15 +1,15 @@
 """数据库配置和连接管理"""
 
-import os
-
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
+from app.core.config import settings
+
 # 数据库URL配置
-# 容器环境中，确保SQLite文件存储在有写权限的目录
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/data/score_analyzer.db")
+# 通过 Settings 读取，确保 backend/.env 生效
+DATABASE_URL = settings.DATABASE_URL
 
 
 def _is_sqlite(url: str) -> bool:
