@@ -1,10 +1,18 @@
 # 本地开发环境快速启动指南
 
+本项目支持三种长期维护的环境模式：
+
+- **A. 纯本地（除 Azure OpenAI 外）**：数据库/文件存储都在本机
+- **B. 本地开发 + 云端数据库（Hybrid）**：代码在本机跑，账号/配额/历史记录走云端 DB
+- **C. 纯云端（Azure Container Apps）**：前后端都在 ACA
+
+详情见 [ENVIRONMENTS.md](ENVIRONMENTS.md)。
+
 ## 📋 前提条件
 
 - Python 3.13+
 - Node.js 18+
-- 已配置 `backend/.env` 文件
+- 已配置 `backend/.env` 文件（该文件不提交到 GitHub）
 
 ---
 
@@ -70,6 +78,18 @@ npm run dev
 
 ## 🔄 开发工作流
 
+### 选择环境模式
+
+- **纯本地（推荐默认）**
+	- 使用模板：`backend/.env.local.example`
+	- 关键点：`DATABASE_URL=sqlite:...` + `STORAGE_TYPE=local`
+	- 说明：除 Azure OpenAI 调用外，其它均本地
+
+- **本地开发 + 云端数据库（Hybrid）**
+	- 使用模板：`backend/.env.clouddb.example`
+	- 关键点：`DATABASE_URL=postgresql+psycopg2://...`
+	- 说明：会直接影响云端用户/配额/历史记录，请使用测试账号
+
 ### 场景1：修改后端代码
 
 1. 激活虚拟环境：`.\venv\Scripts\Activate.ps1`
@@ -101,7 +121,15 @@ cd frontend
 npm run dev
 ```
 
-### 场景4：提交代码到GitHub（触发自动部署）
+### 上云（Azure Container Apps）
+
+本项目生产/演示环境使用 Azure Container Apps（非 Azure VM）。推荐流程：
+
+1) 本地检查：
+- 前端：`npm run build`
+- 后端：`python -m compileall -q .`
+
+2) 构建 + 发布：参考 [ENVIRONMENTS.md](ENVIRONMENTS.md) 的 Cloud-All 发布模板。
 
 ```powershell
 # 在项目根目录
@@ -134,13 +162,13 @@ docker-compose down
 
 ---
 
-## 📊 三个环境对比
+## 📊 环境对比（简表）
 
-| 环境 | 位置 | 后端URL | 前端URL | 用途 |
-|------|------|---------|---------|------|
-| **本地开发** | 你的电脑 | http://localhost:8000 | http://localhost:5173 | 日常开发 |
-| **本地Docker** | 你的电脑 | http://localhost/api | http://localhost | 测试Docker |
-| **生产环境** | Azure VM | http://40.81.16.161/api | http://40.81.16.161 | 线上服务 |
+| 模式 | 数据库 | 文件存储 | 运行位置 | 用途 |
+|------|--------|----------|----------|------|
+| **A. 纯本地** | 本地 SQLite | 本地目录 | 本机 | 日常开发/安全验证 |
+| **B. Hybrid** | 云端 PostgreSQL | 本地（可选切云） | 本机 | 与线上账号/配额一致的联调 |
+| **C. 纯云端** | 云端 PostgreSQL | Azure Blob | Azure Container Apps | 生产/演示 |
 
 ---
 

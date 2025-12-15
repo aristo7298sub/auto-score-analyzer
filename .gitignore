@@ -7,6 +7,11 @@ frontend/.env
 .env.local
 .env.*.local
 
+# 允许提交示例配置（不含敏感信息）
+!.env.example
+!**/.env.example
+!**/.env.*.example
+
 # Python
 __pycache__/
 *.py[cod]
