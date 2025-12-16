@@ -4,10 +4,11 @@ import { StudentScore } from '../types/score';
 
 export interface FileGroup {
     id: string;
+    backendFileId?: number;
     filename: string;
     scores: StudentScore[];
     uploadTime: string;
-    status: 'uploading' | 'analyzing' | 'complete' | 'error';
+    status: 'uploading' | 'parsing' | 'ready' | 'analyzing' | 'complete' | 'error';
     statusMessage?: string;
     studentCount?: number;
     quotaCost?: number;

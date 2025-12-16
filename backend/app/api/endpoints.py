@@ -46,12 +46,12 @@ async def upload_file(
 ):
     """
     上传成绩文件（需要认证）
-    - 检查用户配额
-    - 记录上传和分析日志
-    - 扣除配额
+    - 上传并解析文件
+    - 保存解析结果到历史记录
+    - 不调用 Azure OpenAI（等待用户点击“一键AI分析”再触发）
     """
     start_time = datetime.utcnow()
-    analysis_log = None
+    file_path = None
     
     try:
         logger.info(f"用户 {current_user.username} 开始处理文件上传: {file.filename}")
@@ -98,70 +98,18 @@ async def upload_file(
             elif file.filename.endswith('.pptx'):
                 logger.info("处理PPT文件")
                 student_scores = await FileService.process_ppt(file_path)
-            
+
             if not student_scores:
                 logger.error("未能从文件中提取到有效的成绩数据")
                 raise HTTPException(status_code=400, detail="未能从文件中提取到有效的成绩数据")
-            
+
             student_count = len(student_scores)
             logger.info(f"✅ 数据解析完成！成功提取到 {student_count} 个学生的成绩数据")
-            
-            # 检查配额（1个学生 = 1配额）
-            quota_cost = student_count
-            if not check_quota(current_user, quota_cost):
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=f"配额不足。需要 {quota_cost} 配额，当前余额 {current_user.quota_balance}"
-                )
-            
-            # 创建分析日志
-            analysis_log = AnalysisLog(
-                user_id=current_user.id,
-                filename=file.filename,
-                file_type=Path(file.filename).suffix,
-                student_count=student_count,
-                quota_cost=quota_cost,
-                status="processing"
-            )
-            db.add(analysis_log)
-            db.commit()
-            db.refresh(analysis_log)
-            
-            # 使用批量并发分析成绩
-            logger.info(f"🔍 开始智能分析 {student_count} 名学生的成绩（最多50个并发）...")
-            
-            student_scores = await AnalysisService.analyze_scores_batch(student_scores, max_concurrent=50)
-            
-            logger.info(f"✅ 成绩分析完成！已为 {student_count} 名学生生成个性化分析报告")
-            
-            # 保存成绩数据
-            logger.info("💾 保存成绩数据...")
-            storage_service.save_scores(student_scores)
-            
-            # 扣除配额（仅普通用户）
-            if not current_user.is_vip:
-                current_user.quota_balance -= quota_cost
-            current_user.quota_used += quota_cost
-            
-            # 记录配额交易
-            quota_transaction = QuotaTransaction(
-                user_id=current_user.id,
-                transaction_type="analysis_cost",
-                amount=-quota_cost,
-                balance_after=current_user.quota_balance,
-                description=f"分析文件: {file.filename}"
-            )
-            db.add(quota_transaction)
-            
-            # 更新分析日志状态
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
-            analysis_log.status = "success"
-            analysis_log.processing_time = processing_time
-            
-            # 保存ScoreFile记录（包含完整的分析结果JSON）
+
+            # 保存ScoreFile记录（包含解析结果JSON，暂不做AI分析）
             import json
-            analysis_result_json = json.dumps([score.dict() for score in student_scores], ensure_ascii=False)
-            
+            parsed_result_json = json.dumps([score.dict() for score in student_scores], ensure_ascii=False)
+
             score_file = ScoreFile(
                 user_id=current_user.id,
                 filename=file.filename,
@@ -169,39 +117,34 @@ async def upload_file(
                 file_type=Path(file.filename).suffix.lstrip('.'),  # 去掉开头的点
                 student_count=student_count,
                 file_url=file_url,
-                analysis_completed=True,
-                analysis_result=analysis_result_json,
-                analyzed_at=datetime.utcnow()
+                analysis_completed=False,
+                analysis_result=parsed_result_json,
+                analyzed_at=None
             )
             db.add(score_file)
-            
             db.commit()
-            
-            logger.info("🎉 文件处理完成")
-            
+            db.refresh(score_file)
+
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+
             response_data = ScoreResponse(
                 success=True,
-                message="文件处理成功",
+                message="文件上传并解析成功（等待AI分析）",
                 data=student_scores,
                 original_filename=file.filename,
                 processing_info={
+                    "file_id": score_file.id,
                     "student_count": student_count,
-                    "analyzed_count": student_count,
-                    "quota_cost": quota_cost,
-                    "quota_remaining": current_user.quota_balance,
+                    "quota_cost": student_count,
+                    "analysis_completed": False,
                     "processing_time": processing_time,
-                    "stages_completed": ["upload", "parse", "analyze", "save"]
+                    "stages_completed": ["upload", "parse", "save"]
                 }
             )
-            
-            logger.info(f"📤 准备返回响应 - success: {response_data.success}")
-            logger.info(f"📤 响应中的学生数量: {len(response_data.data) if response_data.data else 0}")
-            logger.info(f"📤 响应processing_info: {response_data.processing_info}")
-            
+
             return response_data
 
         except HTTPException as he:
-            # Propagate expected HTTP errors (e.g. quota insufficient) without masking them as 500.
             logger.error(f"❌ HTTP异常: {he.status_code} - {he.detail}")
             raise he
 
@@ -211,29 +154,12 @@ async def upload_file(
             logger.error(f"❌ 错误详情: {repr(e)}")
             import traceback
             logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
-            
-            # 记录失败日志
-            if analysis_log:
-                # Make sure the session is usable even if an earlier commit failed.
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-                processing_time = (datetime.utcnow() - start_time).total_seconds()
-                analysis_log.status = "failed"
-                analysis_log.error_message = str(e)
-                analysis_log.processing_time = processing_time
-                try:
-                    db.commit()
-                except Exception:
-                    db.rollback()
-            
             raise HTTPException(status_code=500, detail=f"处理文件失败: {str(e)}")
-        
+
         finally:
             # 清理临时文件
             try:
-                if os.path.exists(file_path):
+                if file_path and os.path.exists(file_path):
                     os.remove(file_path)
                     logger.info("临时文件清理完成")
             except Exception as e:
@@ -248,6 +174,162 @@ async def upload_file(
         import traceback
         logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class AnalyzeFileRequest(BaseModel):
+    one_shot_text: str | None = None
+
+
+@router.post("/files/{file_id}/analyze", response_model=ScoreResponse)
+async def analyze_file(
+    file_id: int,
+    request: AnalyzeFileRequest = Body(default=AnalyzeFileRequest()),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """对已上传解析的文件触发AI分析（需要认证）"""
+    start_time = datetime.utcnow()
+
+    # 查询文件记录
+    file_record = db.query(ScoreFile).filter(
+        ScoreFile.id == file_id,
+        ScoreFile.user_id == current_user.id
+    ).first()
+
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 已分析过则直接返回（幂等）
+    import json
+    if file_record.analysis_completed and file_record.analysis_result:
+        try:
+            students_data = json.loads(file_record.analysis_result)
+        except Exception:
+            students_data = []
+
+        return ScoreResponse(
+            success=True,
+            message="文件已完成AI分析",
+            data=[StudentScore(**s) for s in students_data],
+            original_filename=file_record.filename,
+            processing_info={
+                "file_id": file_record.id,
+                "student_count": file_record.student_count,
+                "quota_cost": file_record.student_count,
+                "quota_remaining": current_user.quota_balance,
+                "analysis_completed": True,
+                "processing_time": None,
+                "stages_completed": ["upload", "parse", "analyze", "save"],
+            },
+        )
+
+    if not file_record.analysis_result:
+        raise HTTPException(status_code=400, detail="文件尚未完成解析，无法进行AI分析")
+
+    # 解析保存的解析结果JSON
+    try:
+        students_data = json.loads(file_record.analysis_result)
+    except Exception:
+        students_data = []
+
+    scores: List[StudentScore] = [StudentScore(**s) for s in (students_data or [])]
+    if not scores:
+        raise HTTPException(status_code=400, detail="未找到可分析的学生数据")
+
+    student_count = len(scores)
+    quota_cost = student_count
+    if not check_quota(current_user, quota_cost):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"配额不足。需要 {quota_cost} 配额，当前余额 {current_user.quota_balance}",
+        )
+
+    analysis_log = AnalysisLog(
+        user_id=current_user.id,
+        filename=file_record.filename,
+        file_type=file_record.file_type,
+        student_count=student_count,
+        quota_cost=quota_cost,
+        status="processing",
+    )
+    db.add(analysis_log)
+    db.commit()
+    db.refresh(analysis_log)
+
+    try:
+        one_shot_text = (request.one_shot_text or "").strip() or None
+
+        # 调用 AOAI 批量分析成绩
+        analyzed_scores, usage = await AnalysisService.analyze_scores_batch(
+            scores,
+            max_concurrent=50,
+            one_shot_text=one_shot_text,
+        )
+
+        # 扣除配额（仅普通用户）
+        if not current_user.is_vip:
+            current_user.quota_balance -= quota_cost
+        current_user.quota_used += quota_cost
+
+        quota_transaction = QuotaTransaction(
+            user_id=current_user.id,
+            transaction_type="analysis_cost",
+            amount=-quota_cost,
+            balance_after=current_user.quota_balance,
+            description=f"分析文件: {file_record.filename}",
+        )
+        db.add(quota_transaction)
+
+        # 更新分析日志
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        analysis_log.status = "success"
+        analysis_log.processing_time = processing_time
+        try:
+            analysis_log.prompt_tokens = int((usage or {}).get("prompt_tokens", 0) or 0)
+            analysis_log.completion_tokens = int((usage or {}).get("completion_tokens", 0) or 0)
+        except Exception:
+            pass
+
+        # 更新ScoreFile记录
+        file_record.analysis_completed = True
+        file_record.analyzed_at = datetime.utcnow()
+        file_record.analysis_result = json.dumps([s.dict() for s in analyzed_scores], ensure_ascii=False)
+
+        db.commit()
+
+        return ScoreResponse(
+            success=True,
+            message="AI分析完成",
+            data=analyzed_scores,
+            original_filename=file_record.filename,
+            processing_info={
+                "file_id": file_record.id,
+                "student_count": student_count,
+                "analyzed_count": student_count,
+                "quota_cost": quota_cost,
+                "quota_remaining": current_user.quota_balance,
+                "processing_time": processing_time,
+                "analysis_completed": True,
+                "stages_completed": ["upload", "parse", "analyze", "save"],
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        analysis_log.status = "failed"
+        analysis_log.error_message = str(e)
+        analysis_log.processing_time = processing_time
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=500, detail=f"AI分析失败: {str(e)}")
 
 @router.get("/student/{student_name}", response_model=ScoreResponse)
 async def get_student_score(student_name: str):

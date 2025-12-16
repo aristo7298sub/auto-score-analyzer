@@ -17,10 +17,11 @@ class User(Base):
     # 用户类型
     is_active = Column(Boolean, default=True)
     is_vip = Column(Boolean, default=False)  # VIP用户无限配额
+    vip_expires_at = Column(DateTime(timezone=True), nullable=True)  # VIP到期时间（为空表示永久/未设置）
     is_admin = Column(Boolean, default=False)  # 管理员权限
     
     # 配额
-    quota_balance = Column(Integer, default=10)  # 初始赠送10个配额
+    quota_balance = Column(Integer, default=0)  # 新用户默认0配额（如通过邀请码注册可获得奖励）
     quota_used = Column(Integer, default=0)  # 已使用配额
     
     # 引荐相关
@@ -46,7 +47,7 @@ class QuotaTransaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     
-    # 交易类型：register, referral, admin_add, analysis_cost, refund
+    # 交易类型：register, referral, referral_bonus, admin_add, analysis_cost, refund
     transaction_type = Column(String(20), nullable=False)
     amount = Column(Integer, nullable=False)  # 正数为增加，负数为扣除
     balance_after = Column(Integer, nullable=False)  # 交易后余额
@@ -79,6 +80,10 @@ class AnalysisLog(Base):
     
     # 消耗配额
     quota_cost = Column(Integer, default=0)
+
+    # Azure OpenAI token usage (aggregated per log)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
     
     # 时间信息
     processing_time = Column(Float, nullable=True)  # 处理时间（秒）

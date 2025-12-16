@@ -6,6 +6,7 @@ export interface User {
   username: string;
   email: string;
   is_vip: boolean;
+  vip_expires_at?: string | null;
   is_admin: boolean;
   quota_balance: number;
   quota_used: number;

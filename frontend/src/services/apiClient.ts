@@ -3,7 +3,17 @@ import { useAuthStore } from '../store/authStore';
 
 // 获取API基础URL
 const getApiUrl = () => {
-  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const configured = import.meta.env.VITE_API_URL as string | undefined;
+
+  // In local dev we prefer the Vite proxy (same-origin) to avoid CORS/preflight.
+  // Production/preview builds should still use an explicit backend URL.
+  if (import.meta.env.DEV) {
+    if (!configured || configured === 'http://localhost:8000') {
+      return '';
+    }
+  }
+
+  return configured || 'http://localhost:8000';
 };
 
 // 创建axios实例
@@ -67,6 +77,14 @@ export const quotaApi = {
   
   getTransactions: (limit = 50, offset = 0) =>
     apiClient.get('/api/quota/transactions', { params: { limit, offset } }),
+
+  getConsumption: (
+    limit = 50,
+    offset = 0,
+    timeRange: '1d' | '7d' | '30d' | 'custom' = '7d',
+    startAt?: string,
+    endAt?: string
+  ) => apiClient.get('/api/quota/consumption', { params: { limit, offset, time_range: timeRange, start_at: startAt, end_at: endAt } }),
   
   getReferralCode: () =>
     apiClient.get('/api/quota/referral/code'),
@@ -77,11 +95,18 @@ export const quotaApi = {
 
 // 管理员API
 export const adminApi = {
-  getUsers: (limit = 100, offset = 0, search?: string) =>
-    apiClient.get('/api/admin/users', { params: { limit, offset, search } }),
+  getUsers: (
+    limit = 100,
+    offset = 0,
+    search?: string,
+    timeRange: '1d' | '7d' | '30d' | 'custom' = '7d',
+    startAt?: string,
+    endAt?: string
+  ) =>
+    apiClient.get('/api/admin/users', { params: { limit, offset, search, time_range: timeRange, start_at: startAt, end_at: endAt } }),
   
-  setVip: (userId: number, isVip: boolean) =>
-    apiClient.post('/api/admin/users/set-vip', { user_id: userId, is_vip: isVip }),
+  setVip: (userId: number, isVip: boolean, days?: number) =>
+    apiClient.post('/api/admin/users/set-vip', { user_id: userId, is_vip: isVip, days }),
   
   toggleActive: (userId: number) =>
     apiClient.post(`/api/admin/users/${userId}/toggle-active`),
@@ -97,6 +122,12 @@ export const adminApi = {
 
   deleteUser: (userId: number) =>
     apiClient.delete(`/api/admin/users/${userId}`),
+
+  getQuotaUsage: (month: string) =>
+    apiClient.get('/api/admin/quota/usage', { params: { month } }),
+
+  getQuotaTasks: (month: string, userId?: number, limit: number = 200, offset: number = 0) =>
+    apiClient.get('/api/admin/quota/tasks', { params: { month, user_id: userId, limit, offset } }),
 };
 
 // 成绩分析API
@@ -110,6 +141,9 @@ export const scoreApi = {
       },
     });
   },
+
+  analyzeFile: (fileId: number, oneShotText?: string) =>
+    apiClient.post(`/api/files/${fileId}/analyze`, { one_shot_text: oneShotText || '' }),
   
   getStudent: (studentName: string) =>
     apiClient.get(`/api/student/${studentName}`),

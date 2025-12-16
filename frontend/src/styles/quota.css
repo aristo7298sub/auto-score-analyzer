@@ -1,0 +1,18 @@
+.quota-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 8px;
+  /* Use global design tokens (same feel as the language toggle), with AntD vars as optional fallback */
+  background: var(--color-surface-hover, var(--ant-colorFillSecondary, var(--ant-color-fill-secondary)));
+  border: 1px solid var(--color-border, var(--ant-colorBorder, var(--ant-color-border)));
+  color: var(--color-text, var(--ant-colorText, var(--ant-color-text)));
+  line-height: 20px;
+}
+
+.quota-pill--lg {
+  padding: 6px 14px;
+  border-radius: 10px;
+  line-height: 24px;
+  font-size: 18px;
+  font-weight: 600;
+}

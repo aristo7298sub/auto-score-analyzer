@@ -50,7 +50,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
             email=user_data.email,  # 可以为 None
             hashed_password=get_password_hash(user_data.password),
             referral_code=generate_referral_code(),
-            quota_balance=10,  # 新用户初始配额
+            quota_balance=0,  # 新用户默认0配额
         )
 
         # 处理引荐码
@@ -60,32 +60,62 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
             if referrer:
                 new_user.referred_by = referrer.id
                 # 给引荐人增加配额和计数
-                referrer.quota_balance += 5
+                referrer_bonus = 30
+                new_user_bonus = 20
+
+                referrer.quota_balance += referrer_bonus
                 referrer.referral_count += 1
 
                 # 记录引荐人的配额交易
                 referrer_transaction = QuotaTransaction(
                     user_id=referrer.id,
                     transaction_type="referral",
-                    amount=5,
+                    amount=referrer_bonus,
                     balance_after=referrer.quota_balance,
                     description=f"引荐用户 {user_data.username} 注册",
+                    related_user_id=None,
                 )
                 db.add(referrer_transaction)
 
                 # 给新用户额外配额
-                new_user.quota_balance += 5
+                new_user.quota_balance += new_user_bonus
+
+                # 记录新用户的引荐奖励交易
+                new_user_referral_tx = QuotaTransaction(
+                    user_id=0,  # flush 后回填
+                    transaction_type="referral_bonus",
+                    amount=new_user_bonus,
+                    balance_after=new_user.quota_balance,
+                    description=f"使用邀请码获得奖励（来自 {referrer.username}）",
+                    related_user_id=referrer.id,
+                )
 
         db.add(new_user)
         db.flush()  # 获取 new_user.id
 
-        # 记录新用户的初始配额交易
+        # 回填引荐人交易关联用户（best-effort）
+        if user_data.referral_code and referrer:
+            try:
+                referrer_transaction.related_user_id = new_user.id
+            except Exception:
+                pass
+
+        # 回填新用户引荐奖励交易的 user_id（如果存在）
+        if user_data.referral_code and referrer:
+            # 在上面创建过 new_user_referral_tx
+            try:
+                new_user_referral_tx.user_id = new_user.id
+                db.add(new_user_referral_tx)
+            except Exception:
+                pass
+
+        # 记录新用户注册交易（默认0配额；如使用邀请码则另有 referral_bonus 记录）
         initial_transaction = QuotaTransaction(
             user_id=new_user.id,
             transaction_type="register",
-            amount=new_user.quota_balance,
+            amount=0,
             balance_after=new_user.quota_balance,
-            description="新用户注册奖励" + (f" + 引荐奖励" if referrer else ""),
+            description="新用户注册（默认0配额）" + (" + 使用邀请码" if referrer else ""),
         )
         db.add(initial_transaction)
 

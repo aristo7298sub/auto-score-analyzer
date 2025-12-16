@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { message } from 'antd';
 import { useAuthStore } from '../store/authStore';
@@ -9,6 +9,7 @@ import '../styles/auth.css';
 const Register: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((state) => state.login);
 
   const [formData, setFormData] = useState({
@@ -18,6 +19,15 @@ const Register: React.FC = () => {
     referral_code: '',
   });
   const [loading, setLoading] = useState(false);
+
+  // 通过注册链接预填邀请码：/register?ref=XXXX
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      setFormData((prev) => ({ ...prev, referral_code: ref }));
+    }
+  }, [location.search]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

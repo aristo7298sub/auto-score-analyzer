@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.core.database import engine, Base
+from app.core.database import engine, Base, ensure_schema_compatibility
 from app.core.config import settings
 from app.api import router as api_router
 from app.api.auth import router as auth_router
@@ -19,6 +19,8 @@ async def lifespan(app: FastAPI):
     """
     # 启动时创建所有数据库表
     Base.metadata.create_all(bind=engine)
+    # 兼容性补齐（best-effort）
+    ensure_schema_compatibility()
     yield
     # 关闭时的清理操作（如果需要）
 

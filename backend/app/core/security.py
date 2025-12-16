@@ -93,6 +93,19 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="用户已被禁用",
         )
+
+    # VIP 到期处理（best-effort）：到期则自动降级
+    try:
+        if user.is_vip and getattr(user, "vip_expires_at", None):
+            now = datetime.utcnow()
+            # vip_expires_at 存在时按到期时间判断
+            if user.vip_expires_at <= now:
+                user.is_vip = False
+                user.vip_expires_at = None
+                db.commit()
+                db.refresh(user)
+    except Exception:
+        db.rollback()
     
     return user
 
@@ -112,5 +125,11 @@ async def get_current_admin_user(
 def check_quota(user: User, cost: int = 1) -> bool:
     """检查用户配额是否足够"""
     if user.is_vip:
-        return True
+        vip_expires_at = getattr(user, "vip_expires_at", None)
+        # 兼容老数据：vip_expires_at 为空表示永久 VIP
+        if vip_expires_at is None:
+            return True
+        # 有到期时间则按是否未过期判断
+        if vip_expires_at > datetime.utcnow():
+            return True
     return user.quota_balance >= cost

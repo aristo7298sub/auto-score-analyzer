@@ -7,11 +7,15 @@ from .user_schemas import (
     Token,
     UserInfo,
     QuotaTransactionInfo,
+    QuotaConsumptionSummary,
+    QuotaConsumptionResponse,
     AnalysisLogInfo,
     AdminUserListItem,
     AdminAddQuota,
     AdminSetVIP,
     AdminStats,
+    AdminQuotaUsageItem,
+    AdminQuotaTaskItem,
 )
 
 __all__ = [
@@ -20,9 +24,13 @@ __all__ = [
     "Token",
     "UserInfo",
     "QuotaTransactionInfo",
+    "QuotaConsumptionSummary",
+    "QuotaConsumptionResponse",
     "AnalysisLogInfo",
     "AdminUserListItem",
     "AdminAddQuota",
     "AdminSetVIP",
     "AdminStats",
+    "AdminQuotaUsageItem",
+    "AdminQuotaTaskItem",
 ]

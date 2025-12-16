@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Tabs, Table, Button, Input, Tag, Space, Statistic, Row, Col, message, Modal, InputNumber, Badge, Popconfirm } from 'antd';
+import { Card, Tabs, Table, Button, Input, Tag, Space, Statistic, Row, Col, message, Modal, InputNumber, Badge, Popconfirm, DatePicker, Segmented } from 'antd';
 import { 
   UserOutlined, 
   TeamOutlined, 
@@ -19,6 +19,7 @@ import { useAuthStore } from '../store/authStore';
 import { useAppStore } from '../store/appStore';
 import { adminApi } from '../services/apiClient';
 import type { ColumnsType } from 'antd/es/table';
+import type { Dayjs } from 'dayjs';
 import '../styles/admin.css';
 
 interface AdminUser {
@@ -26,11 +27,16 @@ interface AdminUser {
   username: string;
   email: string;
   is_vip: boolean;
+  vip_expires_at?: string | null;
   is_admin: boolean;
   is_active: boolean;
   quota_balance: number;
   quota_used: number;
   referral_count: number;
+  range_quota_used?: number;
+  range_referral_count?: number;
+  range_prompt_tokens?: number;
+  range_completion_tokens?: number;
   created_at: string;
   last_login: string | null;
 }
@@ -43,6 +49,8 @@ interface AdminStats {
   success_analyses: number;
   failed_analyses: number;
   total_quota_used: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
 }
 
 interface AnalysisLog {
@@ -67,12 +75,22 @@ const Admin: React.FC = () => {
   const [logs, setLogs] = useState<AnalysisLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
+
+  // 用户管理：时间范围（默认过去7天）
+  const [userTimeRange, setUserTimeRange] = useState<'1d' | '7d' | '30d' | 'custom'>('7d');
+  const [userCustomStart, setUserCustomStart] = useState<Dayjs | null>(null);
+  const [userCustomEnd, setUserCustomEnd] = useState<Dayjs | null>(null);
   
   // 配额弹窗
   const [quotaModalVisible, setQuotaModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [quotaAmount, setQuotaAmount] = useState(100);
   const [quotaDescription, setQuotaDescription] = useState('');
+
+  // VIP 弹窗（设置天数）
+  const [vipModalVisible, setVipModalVisible] = useState(false);
+  const [vipDays, setVipDays] = useState(30);
+  const [vipTargetUser, setVipTargetUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     loadData();
@@ -101,7 +119,9 @@ const Admin: React.FC = () => {
   };
 
   const loadUsers = async () => {
-    const response = await adminApi.getUsers(100, 0, searchText || undefined);
+    const startAt = userTimeRange === 'custom' && userCustomStart ? userCustomStart.toISOString() : undefined;
+    const endAt = userTimeRange === 'custom' && userCustomEnd ? userCustomEnd.toISOString() : undefined;
+    const response = await adminApi.getUsers(100, 0, searchText || undefined, userTimeRange, startAt, endAt);
     setUsers(response.data);
   };
 
@@ -110,14 +130,27 @@ const Admin: React.FC = () => {
     setLogs(response.data);
   };
 
-  const handleSetVip = async (userId: number, isVip: boolean) => {
+  const handleSetVip = async (userId: number, isVip: boolean, days?: number) => {
     try {
-      await adminApi.setVip(userId, isVip);
+      await adminApi.setVip(userId, isVip, days);
       message.success(`VIP状态已${isVip ? '开通' : '取消'}`);
       loadUsers();
     } catch (error: any) {
       message.error(error.response?.data?.detail || '操作失败');
     }
+  };
+
+  const openVipModal = (record: AdminUser) => {
+    setVipTargetUser(record);
+    setVipDays(30);
+    setVipModalVisible(true);
+  };
+
+  const confirmSetVipWithDays = async () => {
+    if (!vipTargetUser) return;
+    await handleSetVip(vipTargetUser.id, true, vipDays);
+    setVipModalVisible(false);
+    setVipTargetUser(null);
   };
 
   const handleToggleActive = async (userId: number) => {
@@ -213,13 +246,43 @@ const Admin: React.FC = () => {
     },
     {
       title: '已用配额',
-      dataIndex: 'quota_used',
-      key: 'quota_used',
+      dataIndex: 'range_quota_used',
+      key: 'range_quota_used',
+      sorter: (a, b) => (a.range_quota_used ?? 0) - (b.range_quota_used ?? 0),
+      sortDirections: ['descend', 'ascend'],
+      render: (v) => v ?? 0,
     },
     {
       title: '推荐人数',
-      dataIndex: 'referral_count',
-      key: 'referral_count',
+      dataIndex: 'range_referral_count',
+      key: 'range_referral_count',
+      sorter: (a, b) => (a.range_referral_count ?? 0) - (b.range_referral_count ?? 0),
+      sortDirections: ['descend', 'ascend'],
+      render: (v) => v ?? 0,
+    },
+    {
+      title: '消耗tokens',
+      key: 'range_tokens',
+      children: [
+        {
+          title: 'Input',
+          dataIndex: 'range_prompt_tokens',
+          key: 'range_prompt_tokens',
+          width: 120,
+          sorter: (a, b) => (a.range_prompt_tokens ?? 0) - (b.range_prompt_tokens ?? 0),
+          sortDirections: ['descend', 'ascend'],
+          render: (v) => v ?? 0,
+        },
+        {
+          title: 'Generated',
+          dataIndex: 'range_completion_tokens',
+          key: 'range_completion_tokens',
+          width: 130,
+          sorter: (a, b) => (a.range_completion_tokens ?? 0) - (b.range_completion_tokens ?? 0),
+          sortDirections: ['descend', 'ascend'],
+          render: (v) => v ?? 0,
+        },
+      ],
     },
     {
       title: '注册时间',
@@ -235,7 +298,13 @@ const Admin: React.FC = () => {
           <Button
             size="small"
             type={record.is_vip ? 'default' : 'primary'}
-            onClick={() => handleSetVip(record.id, !record.is_vip)}
+            onClick={() => {
+              if (record.is_vip) {
+                handleSetVip(record.id, false);
+              } else {
+                openVipModal(record);
+              }
+            }}
           >
             {record.is_vip ? '取消VIP' : '设为VIP'}
           </Button>
@@ -464,6 +533,27 @@ const Admin: React.FC = () => {
                       </Card>
                     </Col>
                   </Row>
+
+                  <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+                    <Col span={24}>
+                      <Card title="总tokens消耗">
+                        <Row gutter={[16, 16]}>
+                          <Col xs={24} sm={12}>
+                            <Statistic
+                              title="Input"
+                              value={stats.total_prompt_tokens}
+                            />
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Statistic
+                              title="Generated"
+                              value={stats.total_completion_tokens}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+                  </Row>
                 </div>
               ),
             },
@@ -478,7 +568,7 @@ const Admin: React.FC = () => {
               children: (
                 <div>
                   <div style={{ marginBottom: 16 }}>
-                    <Space>
+                    <Space wrap>
                       <Input
                         placeholder="搜索用户名或邮箱"
                         prefix={<SearchOutlined />}
@@ -487,16 +577,55 @@ const Admin: React.FC = () => {
                         onPressEnter={loadUsers}
                         style={{ width: 300 }}
                       />
+                      <Segmented
+                        value={userTimeRange}
+                        options={[
+                          { label: '过去1天', value: '1d' },
+                          { label: '过去7天', value: '7d' },
+                          { label: '过去1个月', value: '30d' },
+                          { label: '自定义起止', value: 'custom' },
+                        ]}
+                        onChange={(v) => {
+                          const next = v as any;
+                          setUserTimeRange(next);
+                          if (next !== 'custom') {
+                            setUserCustomStart(null);
+                            setUserCustomEnd(null);
+                          }
+                        }}
+                      />
+                      {userTimeRange === 'custom' && (
+                        <Space size={8}>
+                          <DatePicker
+                            showTime
+                            value={userCustomStart}
+                            onChange={(v) => setUserCustomStart(v)}
+                            placeholder="开始时间"
+                          />
+                          <DatePicker
+                            showTime
+                            value={userCustomEnd}
+                            onChange={(v) => setUserCustomEnd(v)}
+                            placeholder="结束时间"
+                          />
+                        </Space>
+                      )}
                       <Button type="primary" onClick={loadUsers}>
                         搜索
                       </Button>
                     </Space>
+                    <div style={{ marginTop: 8, color: '#666', fontSize: 12 }}>
+                      当前列表字段（已用配额 / 推荐人数 / tokens）按所选时间范围统计，默认过去7天。
+                    </div>
                   </div>
                   <Table
                     columns={userColumns}
                     dataSource={users}
                     rowKey="id"
                     loading={loading}
+                    size="small"
+                    className="admin-users-table"
+                    scroll={{ x: 'max-content' }}
                     pagination={{ pageSize: 20 }}
                   />
                 </div>
@@ -522,6 +651,36 @@ const Admin: React.FC = () => {
             },
           ]}
         />
+
+        {/* 设置VIP弹窗 */}
+        <Modal
+          title={`为 ${vipTargetUser?.username} 开通VIP`}
+          open={vipModalVisible}
+          onOk={confirmSetVipWithDays}
+          onCancel={() => {
+            setVipModalVisible(false);
+            setVipTargetUser(null);
+            setVipDays(30);
+          }}
+          okText="确认"
+          cancelText="取消"
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div>
+              <div style={{ marginBottom: 8 }}>VIP天数（必须为30的倍数）</div>
+              <InputNumber
+                min={30}
+                step={30}
+                value={vipDays}
+                onChange={(value) => setVipDays(value || 30)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div style={{ color: '#666', fontSize: 12 }}>
+              示例：30=1个月，60=2个月，90=3个月
+            </div>
+          </Space>
+        </Modal>
 
         {/* 添加配额弹窗 */}
         <Modal

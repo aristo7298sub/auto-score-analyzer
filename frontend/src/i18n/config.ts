@@ -66,9 +66,14 @@ const resources = {
       // 分析
       analysis: {
         upload: '上传文件',
-        uploadHint: '支持 .xlsx, .docx, .pptx 格式',
+        uploadHint: '目前仅支持 Excel (.xlsx)',
         dragFile: '点击上传文件或拖拽文件到此处',
-        fileFormats: '支持 Excel (.xlsx)、Word (.docx)、PowerPoint (.pptx)',
+        fileFormats: '目前仅支持Excel (.xlsx)',
+        oneShotLabel: '🎨 示例风格参考（可选填）',
+        oneShotPlaceholder: '📝 可粘贴一段你过往的成绩分析，或者你希望AI模仿的风格/结构的示例（留空则使用默认风格）',
+        analyzeNow: '一键AI分析',
+        parsing: '正在解析文件...',
+        parsedReady: '已解析，等待AI分析',
         searchTitle: '分析结果查询',
         searchPlaceholder: '请输入学生姓名',
         searchButton: '搜索',
@@ -162,9 +167,14 @@ const resources = {
       // Analysis
       analysis: {
         upload: 'Upload File',
-        uploadHint: 'Support .xlsx, .docx, .pptx formats',
+        uploadHint: 'Currently only Excel (.xlsx) is supported',
         dragFile: 'Click to upload or drag & drop file here',
-        fileFormats: 'Support Excel (.xlsx), Word (.docx), PowerPoint (.pptx)',
+        fileFormats: 'Currently only Excel (.xlsx) is supported',
+        oneShotLabel: '🎨 Style example (optional)',
+        oneShotPlaceholder: '📝 Paste a past analysis or an example style/structure for AI to follow (leave empty to use default style)',
+        analyzeNow: 'Run AI Analysis',
+        parsing: 'Parsing file...',
+        parsedReady: 'Parsed. Ready for AI analysis',
         searchTitle: 'Analysis Results Search',
         searchPlaceholder: 'Enter student name',
         searchButton: 'Search',

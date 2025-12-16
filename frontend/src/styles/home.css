@@ -647,6 +647,108 @@
   gap: 12px;
 }
 
+.export-bottom {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+.upload-progress-slot {
+  min-height: 88px;
+  margin-top: 16px;
+}
+
+.upload-progress-placeholder {
+  min-height: 72px;
+}
+
+.oneshot-panel {
+  margin-top: 16px;
+}
+
+.oneshot-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.oneshot-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.ai-action-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.ai-status-bar {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--card-bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ai-status-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.upload-sim-progress {
+  margin-top: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--card-bg);
+}
+
+.upload-sim-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.mini-progress {
+  height: 8px;
+  background: var(--hover-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mini-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(103, 142, 162, 0.9), rgba(139, 118, 146, 0.9));
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.results-search {
+  margin-top: 8px;
+  margin-bottom: 20px;
+}
+
+.students-scroll {
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.student-analysis-placeholder {
+  opacity: 0.9;
+}
+
 /* Status Info */
 .status-info {
   text-align: center;

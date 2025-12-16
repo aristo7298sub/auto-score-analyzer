@@ -2,7 +2,7 @@
 管理员API端点
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List
@@ -16,7 +16,9 @@ from ..schemas import (
     AdminUserListItem,
     AdminSetVIP,
     AdminStats,
-    AnalysisLogInfo
+    AnalysisLogInfo,
+    AdminQuotaUsageItem,
+    AdminQuotaTaskItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,9 @@ async def get_all_users(
     limit: int = 100,
     offset: int = 0,
     search: str = None,
+    time_range: str = Query("7d", description="1d | 7d | 30d | custom"),
+    start_at: datetime = None,
+    end_at: datetime = None,
     current_admin: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -37,6 +42,22 @@ async def get_all_users(
     - 仅管理员可用
     - 支持搜索和分页
     """
+    # Resolve time window
+    now = end_at or datetime.utcnow()
+    tr = (time_range or "7d").strip().lower()
+    if tr == "1d":
+        start = now - timedelta(days=1)
+    elif tr == "7d":
+        start = now - timedelta(days=7)
+    elif tr in ("30d", "1m", "month"):
+        start = now - timedelta(days=30)
+    elif tr == "custom":
+        if not start_at:
+            raise HTTPException(status_code=400, detail="custom 时间范围需要提供 start_at")
+        start = start_at
+    else:
+        raise HTTPException(status_code=400, detail="time_range 仅支持 1d / 7d / 30d / custom")
+
     query = db.query(User)
     
     # 搜索功能
@@ -45,15 +66,63 @@ async def get_all_users(
             (User.username.contains(search)) | (User.email.contains(search))
         )
     
-    users = (
+    # Aggregations (range-based)
+    analysis_agg = (
+        db.query(
+            AnalysisLog.user_id.label("user_id"),
+            func.coalesce(func.sum(AnalysisLog.quota_cost), 0).label("range_quota_used"),
+            func.coalesce(func.sum(getattr(AnalysisLog, "prompt_tokens", 0)), 0).label("range_prompt_tokens"),
+            func.coalesce(func.sum(getattr(AnalysisLog, "completion_tokens", 0)), 0).label("range_completion_tokens"),
+        )
+        .filter(AnalysisLog.created_at >= start)
+        .filter(AnalysisLog.created_at <= now)
+        .filter(AnalysisLog.status == "success")
+        .group_by(AnalysisLog.user_id)
+        .subquery()
+    )
+
+    referral_agg = (
+        db.query(
+            User.referred_by.label("user_id"),
+            func.count(User.id).label("range_referral_count"),
+        )
+        .filter(User.referred_by.isnot(None))
+        .filter(User.created_at >= start)
+        .filter(User.created_at <= now)
+        .group_by(User.referred_by)
+        .subquery()
+    )
+
+    rows = (
         query
+        .outerjoin(analysis_agg, analysis_agg.c.user_id == User.id)
+        .outerjoin(referral_agg, referral_agg.c.user_id == User.id)
+        .add_columns(
+            func.coalesce(analysis_agg.c.range_quota_used, 0),
+            func.coalesce(referral_agg.c.range_referral_count, 0),
+            func.coalesce(analysis_agg.c.range_prompt_tokens, 0),
+            func.coalesce(analysis_agg.c.range_completion_tokens, 0),
+        )
         .order_by(desc(User.created_at))
         .limit(limit)
         .offset(offset)
         .all()
     )
-    
-    return [AdminUserListItem.from_orm(u) for u in users]
+
+    items: List[AdminUserListItem] = []
+    for u, rq, rr, rp, rc in rows:
+        base = AdminUserListItem.model_validate(u).model_dump()
+        base.update(
+            {
+                "range_quota_used": int(rq or 0),
+                "range_referral_count": int(rr or 0),
+                "range_prompt_tokens": int(rp or 0),
+                "range_completion_tokens": int(rc or 0),
+            }
+        )
+        items.append(AdminUserListItem(**base))
+
+    return items
 
 
 @router.post("/users/set-vip")
@@ -73,7 +142,21 @@ async def set_user_vip(
             detail="用户不存在"
         )
     
-    user.is_vip = data.is_vip
+    # 设置/取消 VIP
+    if data.is_vip:
+        # 默认 30 天；仅支持 30 的倍数
+        days = data.days if data.days is not None else 30
+        if days <= 0 or days % 30 != 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="VIP天数必须为正数且为30的倍数"
+            )
+
+        user.is_vip = True
+        user.vip_expires_at = datetime.utcnow() + timedelta(days=days)
+    else:
+        user.is_vip = False
+        user.vip_expires_at = None
     db.commit()
     db.refresh(user)
     
@@ -81,8 +164,122 @@ async def set_user_vip(
         "message": f"用户VIP状态已更新",
         "user_id": user.id,
         "username": user.username,
-        "is_vip": user.is_vip
+        "is_vip": user.is_vip,
+        "vip_expires_at": user.vip_expires_at,
     }
+
+
+@router.get("/quota/usage", response_model=List[AdminQuotaUsageItem])
+async def get_quota_usage_by_month(
+    month: str = None,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """按月统计每个用户的配额消耗（按消耗从高到低）"""
+
+    # month: YYYY-MM
+    if month:
+        try:
+            year_str, month_str = month.split("-", 1)
+            year = int(year_str)
+            month_num = int(month_str)
+            start = datetime(year, month_num, 1)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="month 参数格式应为 YYYY-MM") from e
+    else:
+        now = datetime.utcnow()
+        start = datetime(now.year, now.month, 1)
+
+    # 下月起始
+    if start.month == 12:
+        end = datetime(start.year + 1, 1, 1)
+    else:
+        end = datetime(start.year, start.month + 1, 1)
+
+    rows = (
+        db.query(
+            User.id.label("user_id"),
+            User.username,
+            User.email,
+            func.coalesce(func.sum(AnalysisLog.quota_cost), 0).label("total_quota_cost"),
+            func.count(AnalysisLog.id).label("task_count"),
+        )
+        .select_from(AnalysisLog)
+        .join(User, User.id == AnalysisLog.user_id)
+        .filter(AnalysisLog.created_at >= start)
+        .filter(AnalysisLog.created_at < end)
+        .filter(AnalysisLog.status == "success")
+        .group_by(User.id, User.username, User.email)
+        .order_by(desc(func.coalesce(func.sum(AnalysisLog.quota_cost), 0)))
+        .all()
+    )
+
+    return [
+        AdminQuotaUsageItem(
+            user_id=r.user_id,
+            username=r.username,
+            email=r.email,
+            total_quota_cost=int(r.total_quota_cost or 0),
+            task_count=int(r.task_count or 0),
+        )
+        for r in rows
+    ]
+
+
+@router.get("/quota/tasks", response_model=List[AdminQuotaTaskItem])
+async def get_quota_tasks_by_month(
+    month: str = None,
+    user_id: int = None,
+    limit: int = 200,
+    offset: int = 0,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """按月获取配额消耗明细（任务维度），可按用户筛选"""
+
+    if month:
+        try:
+            year_str, month_str = month.split("-", 1)
+            year = int(year_str)
+            month_num = int(month_str)
+            start = datetime(year, month_num, 1)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="month 参数格式应为 YYYY-MM") from e
+    else:
+        now = datetime.utcnow()
+        start = datetime(now.year, now.month, 1)
+
+    if start.month == 12:
+        end = datetime(start.year + 1, 1, 1)
+    else:
+        end = datetime(start.year, start.month + 1, 1)
+
+    query = (
+        db.query(AnalysisLog, User.username)
+        .join(User, User.id == AnalysisLog.user_id)
+        .filter(AnalysisLog.created_at >= start)
+        .filter(AnalysisLog.created_at < end)
+        .order_by(desc(AnalysisLog.created_at))
+    )
+
+    if user_id:
+        query = query.filter(AnalysisLog.user_id == user_id)
+
+    logs = query.limit(limit).offset(offset).all()
+
+    return [
+        AdminQuotaTaskItem(
+            id=log.id,
+            user_id=log.user_id,
+            username=username,
+            filename=log.filename,
+            student_count=log.student_count,
+            quota_cost=log.quota_cost,
+            status=log.status,
+            created_at=log.created_at,
+        )
+        for log, username in logs
+    ]
 
 
 @router.post("/users/{user_id}/toggle-active")
@@ -219,6 +416,20 @@ async def get_admin_stats(
     
     # 总配额使用
     total_quota_used = db.query(func.sum(User.quota_used)).scalar() or 0
+
+    # 总 tokens 消耗（全平台，成功任务）
+    total_prompt_tokens = (
+        db.query(func.coalesce(func.sum(getattr(AnalysisLog, "prompt_tokens", 0)), 0))
+        .filter(AnalysisLog.status == "success")
+        .scalar()
+        or 0
+    )
+    total_completion_tokens = (
+        db.query(func.coalesce(func.sum(getattr(AnalysisLog, "completion_tokens", 0)), 0))
+        .filter(AnalysisLog.status == "success")
+        .scalar()
+        or 0
+    )
     
     return AdminStats(
         total_users=total_users,
@@ -227,7 +438,9 @@ async def get_admin_stats(
         total_analyses=total_analyses,
         success_analyses=success_analyses,
         failed_analyses=failed_analyses,
-        total_quota_used=total_quota_used
+        total_quota_used=total_quota_used,
+        total_prompt_tokens=int(total_prompt_tokens),
+        total_completion_tokens=int(total_completion_tokens),
     )
 
 

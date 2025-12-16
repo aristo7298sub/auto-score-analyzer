@@ -12,6 +12,7 @@ import Register from './pages/Register';
 import Home from './pages/Home';
 import History from './pages/History';
 import Admin from './pages/Admin';
+import Quota from './pages/Quota';
 import './i18n/config';
 import './styles/global.css';
 import './App.css';
@@ -59,7 +60,7 @@ function App() {
           >
             <Route index element={<Home />} />
             <Route path="history" element={<History />} />
-            <Route path="quota" element={<div className="page-placeholder">配额管理页面（开发中）</div>} />
+            <Route path="quota" element={<Quota />} />
           </Route>
 
           {/* 404 */}

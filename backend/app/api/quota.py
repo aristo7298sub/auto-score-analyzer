@@ -1,15 +1,16 @@
 """
 配额管理API端点
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from typing import List
+from datetime import datetime, timedelta
 
 from ..core.database import get_db
 from ..core.security import get_current_user, get_current_admin_user, check_quota
 from ..models.user import User, QuotaTransaction
-from ..schemas import QuotaTransactionInfo, AdminAddQuota
+from ..schemas import QuotaTransactionInfo, AdminAddQuota, QuotaConsumptionResponse
 
 router = APIRouter(prefix="/quota", tags=["配额管理"])
 
@@ -23,6 +24,7 @@ async def get_quota_balance(current_user: User = Depends(get_current_user)):
         "quota_balance": current_user.quota_balance,
         "quota_used": current_user.quota_used,
         "is_vip": current_user.is_vip,
+        "vip_expires_at": getattr(current_user, "vip_expires_at", None),
         "has_unlimited": current_user.is_vip
     }
 
@@ -69,6 +71,84 @@ async def get_quota_transactions(
     )
     
     return [QuotaTransactionInfo.from_orm(t) for t in transactions]
+
+
+@router.get("/consumption", response_model=QuotaConsumptionResponse)
+async def get_quota_consumption(
+    limit: int = 50,
+    offset: int = 0,
+    time_range: str = Query("7d", description="1d | 7d | 30d | custom"),
+    start_at: datetime = None,
+    end_at: datetime = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get analysis consumption items + summary for a given time window.
+
+    - Only includes analysis_cost transactions.
+    - Returns the latest 50 items by default.
+    - Summary covers the full selected window (not just returned page).
+    """
+    now = end_at or datetime.utcnow()
+    tr = (time_range or "7d").strip().lower()
+    if tr == "1d":
+        start = now - timedelta(days=1)
+    elif tr == "7d":
+        start = now - timedelta(days=7)
+    elif tr in ("30d", "1m", "month"):
+        start = now - timedelta(days=30)
+    elif tr == "custom":
+        if not start_at:
+            raise HTTPException(status_code=400, detail="custom 时间范围需要提供 start_at")
+        start = start_at
+    else:
+        raise HTTPException(status_code=400, detail="time_range 仅支持 1d / 7d / 30d / custom")
+
+    base = (
+        db.query(QuotaTransaction)
+        .filter(QuotaTransaction.user_id == current_user.id)
+        .filter(QuotaTransaction.transaction_type == "analysis_cost")
+        .filter(QuotaTransaction.created_at >= start)
+        .filter(QuotaTransaction.created_at <= now)
+    )
+
+    items = (
+        base.order_by(desc(QuotaTransaction.created_at))
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
+    # amount is negative for analysis_cost
+    total_consumed = (
+        db.query(func.coalesce(func.sum(-QuotaTransaction.amount), 0))
+        .filter(QuotaTransaction.user_id == current_user.id)
+        .filter(QuotaTransaction.transaction_type == "analysis_cost")
+        .filter(QuotaTransaction.created_at >= start)
+        .filter(QuotaTransaction.created_at <= now)
+        .scalar()
+        or 0
+    )
+
+    task_count = (
+        db.query(func.count(QuotaTransaction.id))
+        .filter(QuotaTransaction.user_id == current_user.id)
+        .filter(QuotaTransaction.transaction_type == "analysis_cost")
+        .filter(QuotaTransaction.created_at >= start)
+        .filter(QuotaTransaction.created_at <= now)
+        .scalar()
+        or 0
+    )
+
+    return {
+        "items": [QuotaTransactionInfo.from_orm(t) for t in items],
+        "summary": {
+            "start_at": start,
+            "end_at": now,
+            "task_count": int(task_count),
+            "total_consumed": int(total_consumed),
+        },
+    }
 
 
 @router.post("/admin/add", dependencies=[Depends(get_current_admin_user)])
@@ -119,7 +199,8 @@ async def get_referral_code(current_user: User = Depends(get_current_user)):
     return {
         "referral_code": current_user.referral_code,
         "referral_count": current_user.referral_count,
-        "bonus_per_referral": 5
+        "bonus_referrer": 30,
+        "bonus_new_user": 20
     }
 
 
@@ -137,7 +218,9 @@ async def get_referral_stats(
     return {
         "referral_code": current_user.referral_code,
         "total_referrals": current_user.referral_count,
-        "total_bonus_earned": current_user.referral_count * 5,
+        "total_bonus_earned": current_user.referral_count * 30,
+        "bonus_referrer": 30,
+        "bonus_new_user": 20,
         "referred_users": [
             {
                 "username": u.username,

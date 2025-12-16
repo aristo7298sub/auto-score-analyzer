@@ -82,6 +82,11 @@ Aaa.xlsx
 副本分析表*.xlsx
 example-data/
 
+# 支付/充值二维码等敏感静态资源（不要提交到仓库）
+frontend/public/payments/*.jpg
+frontend/public/payments/*.jpeg
+frontend/public/payments/*.png
+
 # IDE
 .vscode/
 .idea/
