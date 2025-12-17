@@ -7,6 +7,239 @@
 /* 上传区域 - 大卡片设计 */
 .upload-section {
   margin-bottom: 24px;
+  padding-bottom: 0;
+}
+
+/* 上传 + one-shot 左右布局 */
+.upload-split {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  --panel-inner-height: 260px;
+  --panel-outer-height: calc(var(--panel-inner-height) + 48px);
+}
+
+/* 让左右两侧“外框”（卡片）高度一致：内框高度 + 上下 padding */
+.upload-split .upload-card--compact,
+.upload-split .upload-card--static {
+  height: var(--panel-outer-height);
+  box-sizing: border-box;
+}
+
+/* 上传卡片内部用 flex，保证 Dragger 垂直居中/占位稳定 */
+.upload-split .upload-card--compact {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.upload-split .upload-card--compact .modern-dragger {
+  flex: 1 1 auto;
+}
+
+/* 中间按钮区：位于上框与结果框之间垂直居中 */
+.split-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: stretch;
+  height: 84px;
+}
+
+.split-actions-half {
+  flex: 1 1 0%;
+  display: flex;
+  justify-content: center;
+}
+
+/* split-actions 左右宽度与上方两框一致（黄金分割） */
+.split-actions-half--small {
+  flex: 0.382 1 0%;
+}
+
+.split-actions-half--large {
+  flex: 0.618 1 0%;
+}
+
+/* 两个按钮大小一致 */
+.split-actions .btn-primary {
+  width: 220px;
+  height: 44px;
+}
+
+.upload-half {
+  flex: 1;
+  min-width: 320px;
+}
+
+/* 黄金分割：大约 0.618 / 0.382 */
+.upload-half--small {
+  flex: 0.382 1 0%;
+}
+
+.upload-half--large {
+  flex: 0.618 1 0%;
+}
+
+.upload-half > .upload-card {
+  height: auto;
+}
+
+.upload-card--compact {
+  padding: 24px 18px;
+}
+
+/* 左右两侧“内框”上下齐平（上传内框 vs 文本输入内框） */
+.upload-card--compact .ant-upload-drag {
+  height: var(--panel-inner-height);
+  border-style: dashed !important;
+  border-color: var(--color-border) !important;
+}
+
+.upload-card--compact .ant-upload-drag-container {
+  height: 100%;
+}
+
+.upload-card--static {
+  cursor: default;
+}
+
+.upload-card--static {
+  display: flex;
+  flex-direction: column;
+}
+
+.upload-card--static:hover {
+  transform: none;
+}
+
+.upload-card--static .dragger-content {
+  padding: 0;
+}
+
+.upload-card--compact .upload-icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+
+.upload-card--compact .upload-text {
+  font-size: 16px;
+}
+
+.upload-card--compact .upload-hint {
+  font-size: 13px;
+}
+
+.oneshot-panel--no-top {
+  margin-top: 0;
+}
+
+/* 防止后面重复定义的 .oneshot-panel 覆盖掉 no-top */
+.upload-split .oneshot-panel.oneshot-panel--no-top {
+  margin-top: 0 !important;
+}
+
+/* 进度条 + AI按钮同行 */
+.upload-actions-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+.ai-bottom {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+}
+
+.ai-status-bar--float {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  max-width: calc(100% - 180px);
+}
+
+.ai-analyze-btn {
+  min-width: 160px;
+}
+
+/* AI按钮自身作为进度条（仅 analyzing 时生效） */
+.ai-progress-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-progress-btn .ai-btn-inner {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-progress-btn.is-progressing::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: calc(100% - var(--ai-progress, 0%));
+  background: var(--color-primary-light);
+  transition: width 0.25s ease;
+}
+
+/* 上传按钮自身作为进度条（uploading/parsing 时生效） */
+.upload-progress-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-progress-btn .upload-btn-inner {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-progress-btn.is-progressing::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: calc(100% - var(--upload-progress, 0%));
+  background: var(--color-primary-light);
+  transition: width 0.25s ease;
+}
+
+@media (max-width: 900px) {
+  .upload-split {
+    flex-direction: column;
+  }
+
+  .upload-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .upload-half {
+    min-width: 0;
+  }
+
+  .ai-status-bar--float {
+    position: static;
+    max-width: none;
+    margin-bottom: 10px;
+  }
+
+  .ai-bottom {
+    flex-direction: column;
+  }
 }
 
 .upload-card {
@@ -207,7 +440,28 @@
   border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 24px;
+  margin-top: 0;
   animation: slideIn 0.3s ease;
+}
+
+/* 移除 TextArea 右下角可拖拽缩放符号 */
+.oneshot-textarea textarea {
+  resize: none !important;
+}
+
+@media (max-width: 900px) {
+  .split-actions {
+    flex-direction: column;
+    height: auto;
+    padding: 12px 0;
+  }
+
+  .split-actions-half,
+  .split-actions-half--large,
+  .split-actions-half--small {
+    flex: 1 1 auto;
+    width: 100%;
+  }
 }
 
 @keyframes slideIn {
@@ -666,38 +920,46 @@
 
 .oneshot-panel {
   margin-top: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .oneshot-label {
-  font-size: 13px;
+  margin-top: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 8px;
+}
+.oneshot-panel .ant-input {
+  height: var(--panel-inner-height) !important;
+  min-height: var(--panel-inner-height);
+}
+
+/* one-shot 输入框：虚线边框 + 柔和底色 */
+.oneshot-panel textarea.ant-input,
+.oneshot-panel .ant-input-textarea textarea {
+  border-style: dashed !important;
+  border-color: var(--color-border) !important;
+  background: var(--hover-bg) !important;
+  resize: none !important;
+}
+
+.oneshot-help {
+  margin-top: 10px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 .oneshot-actions {
   display: flex;
   justify-content: flex-end;
   margin-top: 10px;
-}
-
-.ai-action-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 10px;
-}
-
-.ai-status-bar {
-  flex: 1;
-  min-height: 40px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: var(--card-bg);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
 }
 
 .ai-status-text {
@@ -755,10 +1017,18 @@
   padding: 60px 20px;
 }
 
+.status-info--compact {
+  padding: 14px 12px;
+}
+
 .status-info p {
   margin-top: 16px;
   font-size: 16px;
   color: var(--text-secondary);
+}
+
+.status-info--compact p {
+  margin-top: 0;
 }
 
 .status-error {

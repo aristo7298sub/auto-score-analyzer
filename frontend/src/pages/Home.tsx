@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Card, Input, Button, List, message, Tag, Empty, Spin } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { StudentScore } from '../types/score';
@@ -40,7 +40,17 @@ const Home: React.FC = () => {
   const [uploadStageText, setUploadStageText] = useState('');
 
   const [aiStage, setAiStage] = useState<'idle' | 'analyzing' | 'complete' | 'error'>('idle');
-  const [aiStageText, setAiStageText] = useState('');
+  const [aiProgress, setAiProgress] = useState(0);
+  const aiTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (aiTimerRef.current) {
+        window.clearInterval(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // 页面加载时，检查会话 ID，如果是新会话则清空数据
   useEffect(() => {
@@ -76,7 +86,7 @@ const Home: React.FC = () => {
       setUploadStage('uploading');
       setUploadStageText('📤 文件上传中...');
       setAiStage('idle');
-      setAiStageText('');
+      setAiProgress(0);
 
       setSearchText(''); // 清空搜索框
       setFilteredScores([]);
@@ -113,7 +123,7 @@ const Home: React.FC = () => {
       window.clearInterval(uploadTimer);
       setUploadProgress(100);
       setUploadStage('ready');
-      setUploadStageText('✅ 文件内容已解析，等待AI分析');
+      setUploadStageText('✅ 解析完成');
 
       const backendFileId = Number(processing_info?.file_id);
       setPendingFile({
@@ -135,7 +145,7 @@ const Home: React.FC = () => {
       message.success(`✨ 成功解析 ${processing_info?.student_count || scores!.length} 名学生的成绩，等待AI分析`);
     } catch (error: any) {
       setUploadStage('error');
-      setUploadStageText('❌ 上传或解析失败，请重试');
+      setUploadStageText('❌ 上传失败，重试');
       message.error(error.response?.data?.detail || error.message || '上传失败，请重试');
     }
   };
@@ -168,7 +178,25 @@ const Home: React.FC = () => {
 
       // AI 状态（按钮左侧）
       setAiStage('analyzing');
-      setAiStageText('🤖 AI分析中...');
+      setAiProgress(6);
+
+      if (aiTimerRef.current) {
+        window.clearInterval(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+
+      const startedAt = Date.now();
+      aiTimerRef.current = window.setInterval(() => {
+        setAiProgress((p) => {
+          const elapsed = Date.now() - startedAt;
+          const cap = 92;
+          const next = Math.min(cap, Math.max(p, 6) + 3);
+          if (elapsed > 2200 && next >= cap) {
+            return cap;
+          }
+          return next;
+        });
+      }, 220);
 
       const response = await scoreApi.analyzeFile(newGroup.backendFileId!, oneShotText.trim());
       const result = response.data;
@@ -180,7 +208,11 @@ const Home: React.FC = () => {
       const { data: analyzedScores, processing_info } = result;
 
       setAiStage('complete');
-      setAiStageText('✅ AI分析完成');
+      if (aiTimerRef.current) {
+        window.clearInterval(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+      setAiProgress(100);
 
       setFileGroups(prev => prev.map(group =>
         group.id === groupId
@@ -206,7 +238,11 @@ const Home: React.FC = () => {
       message.success('🤖 AI分析完成！');
     } catch (error: any) {
       setAiStage('error');
-      setAiStageText('❌ AI分析失败');
+      if (aiTimerRef.current) {
+        window.clearInterval(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+      setAiProgress(0);
       setFileGroups(prev => prev.map(group =>
         group.id === activeFileId
           ? { ...group, status: 'error', statusMessage: error.response?.data?.detail || error.message || 'AI分析失败，请重试' }
@@ -273,6 +309,23 @@ const Home: React.FC = () => {
   };
 
   const activeGroup = fileGroups.find(g => g.id === activeFileId);
+
+  const statsScores: StudentScore[] = activeGroup?.scores?.length
+    ? activeGroup.scores
+    : pendingFile?.scores || [];
+
+  const statsStudentCount = activeGroup?.studentCount
+    ?? pendingFile?.studentCount
+    ?? (statsScores.length || 0);
+
+  const statsQuotaCost = activeGroup?.quotaCost ?? pendingFile?.quotaCost;
+
+  const avgScore = statsScores.length
+    ? statsScores.reduce((sum, s) => sum + s.total_score, 0) / statsScores.length
+    : 0;
+  const avgScoreText = avgScore.toFixed(2);
+
+  const shouldShowStats = uploadStage === 'ready' || !!activeGroup;
   
   // 使用filteredScores或全部scores
   const displayScores = filteredScores.length > 0 || searchText.trim() 
@@ -283,66 +336,92 @@ const Home: React.FC = () => {
     <div className="home-page">
       {/* 上传区域 */}
       <div className="upload-section">
-        <div className="upload-card">
-          <Dragger
-            accept=".xlsx"
-            multiple={false}
-            beforeUpload={(file) => {
-              handleUpload(file);
-              return false;
-            }}
-            showUploadList={false}
-            className="modern-dragger"
-          >
-            <div className="dragger-content">
-              <div className="upload-icon">📤</div>
-              <p className="upload-text">{t('analysis.dragFile')}</p>
-              <p className="upload-hint">{t('analysis.fileFormats')}</p>
+        <div className="upload-split">
+          <div className="upload-half upload-half--large">
+            <div className="upload-card upload-card--compact">
+              <Dragger
+                accept=".xlsx"
+                multiple={false}
+                beforeUpload={(file) => {
+                  handleUpload(file);
+                  return false;
+                }}
+                showUploadList={false}
+                className="modern-dragger"
+              >
+                <div className="dragger-content">
+                  <div className="upload-icon">📤</div>
+                  <p className="upload-text">{t('analysis.dragFile')}</p>
+                  <p className="upload-hint">{t('analysis.fileFormats')}</p>
+                </div>
+              </Dragger>
             </div>
-          </Dragger>
+          </div>
 
-          {/* 上传/解析模拟进度条：放在上传框底部（输入框上方） */}
-          {uploadStage !== 'idle' && (
-            <div className="upload-sim-progress" aria-live="polite">
-              <div className="upload-sim-text">{uploadStageText}</div>
-              <div className="mini-progress">
-                <div className="mini-progress__fill" style={{ width: `${uploadProgress}%` }} />
+          <div className="upload-half upload-half--small">
+            <div className="upload-card upload-card--compact upload-card--static">
+              <div className="oneshot-panel oneshot-panel--no-top">
+                <Input.TextArea
+                  value={oneShotText}
+                  onChange={(e) => setOneShotText(e.target.value)}
+                  placeholder={t('analysis.oneShotPlaceholder')}
+                  className="oneshot-textarea"
+                />
               </div>
             </div>
-          )}
+          </div>
+        </div>
 
-          {/* One-shot 输入 + 一键AI分析 */}
-          <div className="oneshot-panel">
-            <Input.TextArea
-              value={oneShotText}
-              onChange={(e) => setOneShotText(e.target.value)}
-              placeholder={t('analysis.oneShotPlaceholder')}
-              autoSize={{ minRows: 3, maxRows: 6 }}
-            />
-            <div className="ai-action-row">
-              <div className="ai-status-bar" aria-live="polite">
-                {aiStage === 'analyzing' && (
-                  <>
-                    <div className="ai-status-text"><Spin size="small" style={{ marginRight: 8 }} />{aiStageText || '🤖 AI分析中...'}</div>
-                  </>
-                )}
-                {aiStage === 'complete' && (
-                  <div className="ai-status-text">{aiStageText || '✅ AI分析完成'}</div>
-                )}
-                {aiStage === 'error' && (
-                  <div className="ai-status-text">{aiStageText || '❌ AI分析失败'}</div>
-                )}
-              </div>
+        {/* 中间按钮区：位于上方两框与下方结果框之间的正中间 */}
+        <div className="split-actions" aria-label="actions">
+          <div className="split-actions-half split-actions-half--large">
+            <Upload
+              accept=".xlsx"
+              multiple={false}
+              beforeUpload={(file) => {
+                handleUpload(file);
+                return false;
+              }}
+              showUploadList={false}
+            >
               <Button
                 type="primary"
-                onClick={handleAnalyzeNow}
-                loading={loading}
-                disabled={!pendingFile || uploadStage !== 'ready'}
-                className="btn-primary"
+                className={`btn-primary upload-progress-btn ${uploadStage === 'uploading' || uploadStage === 'parsing' ? 'is-progressing' : ''}`}
+                disabled={uploadStage === 'uploading' || uploadStage === 'parsing'}
+                style={
+                  uploadStage === 'uploading' || uploadStage === 'parsing'
+                    ? ({ ['--upload-progress' as any]: `${uploadProgress}%` } as React.CSSProperties)
+                    : undefined
+                }
               >
-                {t('analysis.analyzeNow')}
+                <span className="upload-btn-inner">
+                  {(uploadStage === 'uploading' || uploadStage === 'parsing') && (
+                    <Spin size="small" style={{ marginRight: 8 }} />
+                  )}
+                  {uploadStage === 'idle' ? '📤 上传文件' : (uploadStageText || '处理中...')}
+                </span>
               </Button>
-            </div>
+            </Upload>
+          </div>
+
+          <div className="split-actions-half split-actions-half--small">
+            <Button
+              type="primary"
+              onClick={handleAnalyzeNow}
+              loading={false}
+              disabled={!pendingFile || uploadStage !== 'ready' || loading || aiStage === 'analyzing'}
+              className={`btn-primary ai-analyze-btn ai-progress-btn ${aiStage === 'analyzing' ? 'is-progressing' : ''}`}
+              style={
+                aiStage === 'analyzing'
+                  ? ({ ['--ai-progress' as any]: `${aiProgress}%` } as React.CSSProperties)
+                  : undefined
+              }
+            >
+              <span className="ai-btn-inner">
+                {aiStage === 'analyzing' && <Spin size="small" style={{ marginRight: 8 }} />}
+                {t('analysis.analyzeNow')}
+              </span>
+            </Button>
           </div>
         </div>
       </div>
@@ -383,9 +462,8 @@ const Home: React.FC = () => {
         </div>
       )}
 
-      {/* 分析结果 */}
-      {(activeGroup || pendingFile) && (
-        <Card className="results-card card" bordered={false}>
+      {/* 分析结果（默认加载，与之前保持一致） */}
+      <Card className="results-card card" bordered={false}>
           <div className="results-header">
             <div className="results-title">
               <span className="results-icon">📈</span>
@@ -412,100 +490,101 @@ const Home: React.FC = () => {
             )}
           </div>
 
-          {/* 成绩统计 */}
-          {activeGroup && activeGroup.status === 'complete' && displayScores.length > 0 && (
+          {/* 成绩统计：解析完成后即展示；AI完成后再展示搜索与学生结果 */}
+          {shouldShowStats && statsScores.length > 0 && (
             <>
-              <div className="stats-grid">`
+              <div className="stats-grid">
                 <div className="stat-card glass">
                   <div className="stat-icon">👥</div>
-                  <div className="stat-value">{activeGroup.studentCount || activeGroup.scores.length}</div>
+                  <div className="stat-value">{statsStudentCount}</div>
                   <div className="stat-label">学生人数</div>
                 </div>
-                
-                {activeGroup.quotaCost !== undefined && (
+
+                {statsQuotaCost !== undefined && (
                   <div className="stat-card glass">
                     <div className="stat-icon">💎</div>
-                    <div className="stat-value">{activeGroup.quotaCost}</div>
-                    <div className="stat-label">配额消耗</div>
+                    <div className="stat-value">{statsQuotaCost}</div>
+                    <div className="stat-label">预计配额消耗</div>
                   </div>
                 )}
-                
+
                 <div className="stat-card glass">
                   <div className="stat-icon">📝</div>
-                  <div className="stat-value">
-                    {Math.round(activeGroup.scores.reduce((sum, s) => sum + s.total_score, 0) / activeGroup.scores.length)}
-                  </div>
+                  <div className="stat-value">{avgScoreText}</div>
                   <div className="stat-label">平均分</div>
                 </div>
               </div>
 
-              {/* 搜索框：放在汇总卡片下方，且位于成绩分析卡片内部 */}
-              <div className="results-search">
-                <div className="search-header">
-                  <span className="search-icon">🔍</span>
-                  <span className="search-title">搜索学生成绩</span>
+              {(!activeGroup || activeGroup.status !== 'complete') && (
+                <div className="status-info status-info--compact">
+                  <p>点击⚡一键AI分析后，获取分析结果</p>
                 </div>
-                <div className="search-input-group">
-                  <Input
-                    placeholder={activeGroup ? "输入学生姓名搜索，留空显示全部" : "请先上传文件"}
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    onPressEnter={handleSearch}
-                    disabled={!activeGroup}
-                    className="input"
-                  />
-                  <Button
-                    type="primary"
-                    onClick={handleSearch}
-                    disabled={!activeGroup}
-                    className="btn-primary"
-                  >
-                    搜索
-                  </Button>
-                </div>
-              </div>
+              )}
 
-              {/* 学生列表 */}
-              <div className="students-list students-scroll">
-                <List
-                  dataSource={displayScores}
-                  renderItem={(student) => (
-                    <div className="student-card glass">
-                      <div className="student-header">
-                        <div className="student-name">
-                          <span className="name-badge">{student.student_name.charAt(0)}</span>
-                          <span className="name-text">{student.student_name}</span>
-                        </div>
-                        <div className="student-score">
-                          <span className="score-value">{student.total_score}</span>
-                          <span className="score-label">分</span>
-                        </div>
-                      </div>
-
-                      {(!activeGroup || activeGroup.status !== 'complete') && (
-                        <div className="student-analysis student-analysis-placeholder">
-                          <div className="analysis-label">📊 AI 分析</div>
-                          <p className="analysis-text">✨ 已解析完成，点击上方「一键AI分析」为每位学生生成分析内容</p>
-                        </div>
-                      )}
-
-                      {activeGroup && activeGroup.status === 'complete' && student.analysis && (
-                        <div className="student-analysis">
-                          <div className="analysis-label">📊 AI 分析</div>
-                          <p className="analysis-text">{student.analysis}</p>
-                        </div>
-                      )}
+              {activeGroup && activeGroup.status === 'complete' && (
+                <>
+                  {/* 搜索框：放在汇总卡片下方，且位于成绩分析卡片内部 */}
+                  <div className="results-search">
+                    <div className="search-header">
+                      <span className="search-icon">🔍</span>
+                      <span className="search-title">搜索学生成绩</span>
                     </div>
-                  )}
-                />
-              </div>
+                    <div className="search-input-group">
+                      <Input
+                        placeholder={"输入学生姓名搜索，留空显示全部"}
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        onPressEnter={handleSearch}
+                        disabled={!activeGroup}
+                        className="input"
+                      />
+                      <Button
+                        type="primary"
+                        onClick={handleSearch}
+                        disabled={!activeGroup}
+                        className="btn-primary"
+                      >
+                        搜索
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* 学生列表 */}
+                  <div className="students-list students-scroll">
+                    <List
+                      dataSource={displayScores}
+                      renderItem={(student) => (
+                        <div className="student-card glass">
+                          <div className="student-header">
+                            <div className="student-name">
+                              <span className="name-badge">{student.student_name.charAt(0)}</span>
+                              <span className="name-text">{student.student_name}</span>
+                            </div>
+                            <div className="student-score">
+                              <span className="score-value">{student.total_score}</span>
+                              <span className="score-label">分</span>
+                            </div>
+                          </div>
+
+                          {student.analysis && (
+                            <div className="student-analysis">
+                              <div className="analysis-label">📊 AI 分析</div>
+                              <p className="analysis-text">{student.analysis}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    />
+                  </div>
+                </>
+              )}
             </>
           )}
 
           {/* AI未处理前：结果区留空（仅保留占位提示） */}
-          {(!activeGroup || activeGroup.status !== 'complete') && (
+          {(!activeGroup || activeGroup.status !== 'complete') && !shouldShowStats && (
             <div className="status-info">
-              <p>🕒 点击上方「一键AI分析」后开始展示结果</p>
+              <p>📤 请先上传文件并完成解析</p>
             </div>
           )}
 
@@ -513,7 +592,6 @@ const Home: React.FC = () => {
             <Empty description={searchText.trim() ? "未找到匹配的学生" : "暂无数据"} />
           )}
         </Card>
-      )}
     </div>
   );
 };
