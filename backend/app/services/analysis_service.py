@@ -32,6 +32,7 @@ class AnalysisService:
 
         return (
             AnalysisService.SYSTEM_ROLE_INSTRUCTION
+            + "以下是参考示例，请你只学习风格不要照搬。\n"
             + f"参考格式示例：{reference_example}\n\n"
             + AnalysisService.SYSTEM_NOTES
         )
