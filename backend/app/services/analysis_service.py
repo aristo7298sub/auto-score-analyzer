@@ -6,6 +6,36 @@ import json
 import asyncio
 
 class AnalysisService:
+    SYSTEM_ROLE_INSTRUCTION = (
+        "你是一位专业的小学数学教育分析专家。请根据学生的薄弱知识点，生成一段完整的成绩分析和改进建议。\n\n"
+    )
+
+    SYSTEM_NOTES = (
+        "注意：\n"
+        "1. 直接输出一段完整的分析文本\n"
+        "2. 不要使用分段标题或编号\n"
+        "3. 以分号或顿号连接各个知识点\n"
+        "4. 既要指出问题，也要给出具体的改进建议"
+    )
+
+    DEFAULT_REFERENCE_EXAMPLE = (
+        "从知识点方面，小朋友能够基本掌握，但是在以下方面还需要继续加强：除法算理的运用不够灵活，根据余数和除数求最小、最大的被除数，可以针对性练习，回顾这个专题的练习，同时加强计算；轴对称图形观察图形的细致性还要提高；长度单位的换算和比较，不够熟练，假期要加强练习；英文表述的倍数关系不够熟练，建议多总结句型，针对性练习；归一问题读题不够透彻，很容易找不到那个单一的量，建议在读题的基础上，善于做一些标记、图来帮助分析；单位换算还需要继续练习；对于长度单位、面积单位的感知还不够熟悉，平时要在日常生活中多多留心，从生活中身边的例子出发，加深对于单位概念的理解和熟练度；混合运算的变形不够熟练，建议做一些标记、简单的提示词来帮助梳理思路；计算面积会忘记统一单位，还是要多总结做题方法、题型。"
+    )
+
+    @staticmethod
+    def _build_system_prompt(one_shot_text: str | None = None) -> str:
+        reference_example = (
+            one_shot_text.strip()
+            if one_shot_text and one_shot_text.strip()
+            else AnalysisService.DEFAULT_REFERENCE_EXAMPLE
+        )
+
+        return (
+            AnalysisService.SYSTEM_ROLE_INSTRUCTION
+            + f"参考格式示例：{reference_example}\n\n"
+            + AnalysisService.SYSTEM_NOTES
+        )
+
     @staticmethod
     def _extract_usage(response: Any) -> Dict[str, int]:
         """Extract OpenAI usage fields in a defensive way."""
@@ -37,14 +67,6 @@ class AnalysisService:
 
 该学生在以下知识点存在薄弱环节：
 {', '.join(weak_points)}
-
-请针对这些薄弱知识点，生成一段完整的成绩分析和改进建议。
-要求：
-1. 直接输出分析文本，不要分段标题
-2. 以"从知识点方面"开头
-3. 分析要具体、有针对性
-4. 包含改进建议和练习方法
-5. 语气要专业但亲切
 """
             
             # 用于返回的扣分汇总（按类别）
@@ -57,21 +79,7 @@ class AnalysisService:
                     "扣分项": item.deduction
                 })
 
-            system_content = (
-                "你是一位专业的小学数学教育分析专家。请根据学生的薄弱知识点，生成一段完整的成绩分析文本。\n\n"
-                "参考格式示例：从知识点方面，小朋友能够基本掌握，但是在以下方面还需要继续加强：除法算理的运用不够灵活，根据余数和除数求最小、最大的被除数，可以针对性练习，回顾这个专题的练习，同时加强计算；轴对称图形观察图形的细致性还要提高；长度单位的换算和比较，不够熟练，假期要加强练习；英文表述的倍数关系不够熟练，建议多总结句型，针对性练习；归一问题读题不够透彻，很容易找不到那个单一的量，建议在读题的基础上，善于做一些标记、图来帮助分析；单位换算还需要继续练习；对于长度单位、面积单位的感知还不够熟悉，平时要在日常生活中多多留心，从生活中身边的例子出发，加深对于单位概念的理解和熟练度；混合运算的变形不够熟练，建议做一些标记、简单的提示词来帮助梳理思路；计算面积会忘记统一单位，还是要多总结做题方法、题型。\n\n"
-                "注意：\n"
-                "1. 直接输出一段完整的分析文本\n"
-                "2. 不要使用分段标题或编号\n"
-                "3. 以分号或顿号连接各个知识点\n"
-                "4. 既要指出问题，也要给出具体的改进建议"
-            )
-
-            if one_shot_text and one_shot_text.strip():
-                system_content += (
-                    "\n\n以下为用户提供的一次参考案例（one-shot）。请学习其写作风格、长度与语气，但不要照搬内容：\n"
-                    f"{one_shot_text.strip()}"
-                )
+            system_content = AnalysisService._build_system_prompt(one_shot_text=one_shot_text)
 
             # 调用Azure OpenAI API
             response = await client.chat.completions.create(
