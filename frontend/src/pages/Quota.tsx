@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Card, Col, DatePicker, Divider, Image, Input, Modal, Row, Segmented, Space, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
@@ -49,7 +49,8 @@ const { Title, Paragraph, Text } = Typography;
 const Quota: React.FC = () => {
   const { user, updateUser } = useAuthStore();
 
-  const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [consumptionLoading, setConsumptionLoading] = useState(false);
 
   // 我的数据
   const [consumptionItems, setConsumptionItems] = useState<QuotaTx[]>([]);
@@ -65,6 +66,9 @@ const Quota: React.FC = () => {
   // 弹窗
   const [topupOpen, setTopupOpen] = useState(false);
   const [vipOpen, setVipOpen] = useState(false);
+
+  // Preserve window scroll position when switching consumption ranges.
+  const consumptionScrollYRef = useRef<number | null>(null);
 
   const referralLink = useMemo(() => {
     if (!referralCode?.referral_code) return '';
@@ -99,7 +103,7 @@ const Quota: React.FC = () => {
         return;
       }
 
-      setLoading(true);
+      setConsumptionLoading(true);
       const startAt = consumeTimeRange === 'custom' && consumeCustomStart ? consumeCustomStart.toISOString() : undefined;
       const endAt = consumeTimeRange === 'custom' && consumeCustomEnd ? consumeCustomEnd.toISOString() : undefined;
       const res = await quotaApi.getConsumption(50, 0, consumeTimeRange, startAt, endAt);
@@ -109,12 +113,21 @@ const Quota: React.FC = () => {
     } catch (e: any) {
       message.error(e?.response?.data?.detail || '加载消耗明细失败');
     } finally {
-      setLoading(false);
+      setConsumptionLoading(false);
+
+      // If AntD/DOM updates caused a jump, restore previous scroll.
+      if (consumptionScrollYRef.current !== null) {
+        const y = consumptionScrollYRef.current;
+        consumptionScrollYRef.current = null;
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: y, behavior: 'auto' });
+        });
+      }
     }
   };
 
   const loadMyData = async () => {
-    setLoading(true);
+    setPageLoading(true);
     try {
       // 刷新当前用户（包含 VIP 到期信息等）
       const me = await authApi.getCurrentUser();
@@ -139,7 +152,7 @@ const Quota: React.FC = () => {
     } catch (e: any) {
       message.error(e?.response?.data?.detail || '加载配额信息失败');
     } finally {
-      setLoading(false);
+      setPageLoading(false);
     }
   };
 
@@ -194,7 +207,7 @@ const Quota: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={8}>
-          <Card title="我的额度" loading={loading}>
+          <Card title="我的额度" loading={pageLoading}>
             <Row gutter={16}>
               <Col span={12}>
                 <div style={{ marginBottom: 8, color: 'var(--color-text-secondary)' }}>当前余额</div>
@@ -228,7 +241,7 @@ const Quota: React.FC = () => {
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card title="邀请码" loading={loading}>
+          <Card title="邀请码" loading={pageLoading}>
             <Paragraph>
               你的邀请码是唯一的。对方使用你的邀请码注册：<br />
               <Text strong>你 +{referralCode?.bonus_referrer ?? 30} 额度</Text>，对方 <Text strong>+{referralCode?.bonus_new_user ?? 20} 额度</Text>。
@@ -266,7 +279,7 @@ const Quota: React.FC = () => {
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card title="充值额度或VIP" loading={loading}>
+          <Card title="充值额度或VIP" loading={pageLoading}>
             <Paragraph>
               <Text strong>额度充值：</Text>0.3元 / 额度（1个学生成绩记录=1额度）
             </Paragraph>
@@ -296,7 +309,6 @@ const Quota: React.FC = () => {
         <Col span={24}>
           <Card
             title="消耗明细（最近50条）"
-            loading={loading}
             extra={
               <Space wrap>
                 <Segmented
@@ -308,6 +320,7 @@ const Quota: React.FC = () => {
                     { label: '自定义起止', value: 'custom' },
                   ]}
                   onChange={(v) => {
+                    consumptionScrollYRef.current = window.scrollY;
                     const next = v as any;
                     setConsumeTimeRange(next);
                     if (next !== 'custom') {
@@ -336,7 +349,14 @@ const Quota: React.FC = () => {
                     />
                   </Space>
                 )}
-                <Button onClick={loadConsumption}>刷新</Button>
+                <Button
+                  onClick={() => {
+                    consumptionScrollYRef.current = window.scrollY;
+                    loadConsumption();
+                  }}
+                >
+                  刷新
+                </Button>
               </Space>
             }
           >
@@ -349,6 +369,8 @@ const Quota: React.FC = () => {
               dataSource={consumptionItems}
               pagination={false}
               size="middle"
+              scroll={{ y: 10 * 44 }}
+              loading={consumptionLoading}
             />
           </Card>
         </Col>
