@@ -39,7 +39,7 @@ docker build \
 # 构建并推送到 ACR
 az acr build \
   --registry <acr-name> \
-  --image score-analyzer-frontend:latest \
+  --image score-analyzer-frontend:<tag> \
   --build-arg VITE_API_URL=https://<backend-fqdn> \
   --file frontend/Dockerfile \
   frontend/
