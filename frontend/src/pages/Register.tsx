@@ -66,7 +66,7 @@ const Register: React.FC = () => {
       <div className="auth-card">
         <div className="auth-header">
           <img src="/logo.svg" alt="Logo" className="auth-logo" />
-          <h1 className="auth-title">AI成绩分析平台</h1>
+          <h1 className="auth-title">{t('app.title')}</h1>
           <p className="auth-subtitle">{t('auth.register')}</p>
         </div>
 
@@ -86,7 +86,7 @@ const Register: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">{t('auth.email')} <span style={{ color: '#999', fontWeight: 'normal' }}>（可选）</span></label>
+            <label htmlFor="email">{t('auth.email')} <span style={{ color: '#999', fontWeight: 'normal' }}>{t('common.optionalSuffix')}</span></label>
             <input
               id="email"
               type="email"

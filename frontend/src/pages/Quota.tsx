@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Card, Col, DatePicker, Divider, Image, Input, Modal, Row, Segmented, Space, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
+import { useTranslation } from 'react-i18next';
 
 import { authApi, quotaApi } from '../services/apiClient';
 import { useAuthStore } from '../store/authStore';
+import { useAppStore } from '../store/appStore';
 import '../styles/quota.css';
 
 type QuotaTx = {
@@ -47,7 +49,9 @@ type ReferralStatsResponse = {
 const { Title, Paragraph, Text } = Typography;
 
 const Quota: React.FC = () => {
+  const { t } = useTranslation();
   const { user, updateUser } = useAuthStore();
+  const { language } = useAppStore();
 
   const [pageLoading, setPageLoading] = useState(false);
   const [consumptionLoading, setConsumptionLoading] = useState(false);
@@ -92,7 +96,7 @@ const Quota: React.FC = () => {
       await navigator.clipboard.writeText(text);
       message.success(okMsg);
     } catch {
-      message.error('复制失败，请手动复制');
+      message.error(t('quotaPage.copyFailed'));
     }
   };
 
@@ -111,7 +115,7 @@ const Quota: React.FC = () => {
       setConsumptionItems(data.items || []);
       setConsumptionSummary(data.summary || null);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || '加载消耗明细失败');
+      message.error(e?.response?.data?.detail || t('quotaPage.loadConsumptionFailed'));
     } finally {
       setConsumptionLoading(false);
 
@@ -150,7 +154,7 @@ const Quota: React.FC = () => {
         vip_expires_at: balanceRes.data.vip_expires_at,
       } as any);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || '加载配额信息失败');
+      message.error(e?.response?.data?.detail || t('quotaPage.loadQuotaFailed'));
     } finally {
       setPageLoading(false);
     }
@@ -168,21 +172,21 @@ const Quota: React.FC = () => {
 
   const consumptionColumns: ColumnsType<QuotaTx> = [
     {
-      title: '时间',
+      title: t('quotaPage.consumption.columns.time'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (v) => new Date(v).toLocaleString('zh-CN'),
+      render: (v) => new Date(v).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US'),
     },
     {
-      title: '消耗额度',
+      title: t('quotaPage.consumption.columns.consumed'),
       dataIndex: 'amount',
       key: 'amount',
       width: 100,
       render: (v) => Math.abs(Number(v || 0)),
     },
     {
-      title: '剩余额度',
+      title: t('quotaPage.consumption.columns.balanceAfter'),
       dataIndex: 'balance_after',
       key: 'balance_after',
       width: 100,
@@ -191,15 +195,15 @@ const Quota: React.FC = () => {
 
   return (
     <div>
-      <Title level={2} style={{ marginBottom: 8 }}>额度管理</Title>
+      <Title level={2} style={{ marginBottom: 8 }}>{t('quotaPage.title')}</Title>
 
       <Alert
         type="info"
         showIcon
-        message={<span>开发不易，维护需要成本，请多多支持 🙏</span>}
+        message={<span>{t('quotaPage.supportMessage')}</span>}
         description={
           <div>
-            <Text strong>只需一杯特价瑞幸的价格，帮你节省2个小时 ☕⏱️</Text>
+            <Text strong>{t('quotaPage.supportDescription')}</Text>
           </div>
         }
         style={{ marginBottom: 16 }}
@@ -207,14 +211,14 @@ const Quota: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={8}>
-          <Card title="我的额度" loading={pageLoading}>
+          <Card title={t('quotaPage.cards.myQuota')} loading={pageLoading}>
             <Row gutter={16}>
               <Col span={12}>
-                <div style={{ marginBottom: 8, color: 'var(--color-text-secondary)' }}>当前余额</div>
+                <div style={{ marginBottom: 8, color: 'var(--color-text-secondary)' }}>{t('quotaPage.currentBalance')}</div>
                 <div><span className="quota-pill quota-pill--lg">{user?.is_vip ? '∞' : String(user?.quota_balance ?? 0)}</span></div>
               </Col>
               <Col span={12}>
-                <div style={{ marginBottom: 8, color: 'var(--color-text-secondary)' }}>累计已用</div>
+                <div style={{ marginBottom: 8, color: 'var(--color-text-secondary)' }}>{t('quotaPage.totalUsed')}</div>
                 <div><span className="quota-pill quota-pill--lg">{String(user?.quota_used ?? 0)}</span></div>
               </Col>
             </Row>
@@ -222,56 +226,56 @@ const Quota: React.FC = () => {
             <Divider />
 
             <Paragraph style={{ marginBottom: 8 }}>
-              <Text strong>计费规则：</Text> 1个学生成绩记录 = 1个额度 = 0.3元
+              <Text strong>{t('quotaPage.pricingRuleLabel')}</Text> {t('quotaPage.pricingRuleValue')}
             </Paragraph>
 
             <Paragraph style={{ marginBottom: 0 }}>
-              <Text strong>VIP：</Text>
+              <Text strong>{t('quotaPage.vipLabel')}</Text>
               {user?.is_vip ? (
                 vipRemaining?.mode === 'expires' ? (
-                  <span className="quota-pill">已开通（剩余约 {vipRemaining.days} 天）</span>
+                  <span className="quota-pill">{t('quotaPage.vipActiveRemainingDays', { days: vipRemaining.days })}</span>
                 ) : (
-                  <span className="quota-pill">已开通（无限期）</span>
+                  <span className="quota-pill">{t('quotaPage.vipActiveUnlimited')}</span>
                 )
               ) : (
-                <span className="quota-pill">未开通</span>
+                <span className="quota-pill">{t('quotaPage.vipInactive')}</span>
               )}
             </Paragraph>
           </Card>
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card title="邀请码" loading={pageLoading}>
+          <Card title={t('quotaPage.cards.inviteCode')} loading={pageLoading}>
             <Paragraph>
-              你的邀请码是唯一的。对方使用你的邀请码注册：<br />
-              <Text strong>你 +{referralCode?.bonus_referrer ?? 30} 额度</Text>，对方 <Text strong>+{referralCode?.bonus_new_user ?? 20} 额度</Text>。
+              {t('quotaPage.inviteIntro')}<br />
+              <Text strong>{t('quotaPage.inviteYouBonus', { amount: referralCode?.bonus_referrer ?? 30 })}</Text>，{t('quotaPage.inviteNewUserBonusPrefix')} <Text strong>{t('quotaPage.inviteNewUserBonus', { amount: referralCode?.bonus_new_user ?? 20 })}</Text>。
               <br />
-              <Text type="secondary">（新用户默认额度为0）</Text>
+              <Text type="secondary">{t('quotaPage.newUserDefaultZero')}</Text>
             </Paragraph>
 
             <Space direction="vertical" style={{ width: '100%' }} size={8}>
               <Space.Compact style={{ width: '100%' }}>
                 <Input readOnly value={referralCode?.referral_code || ''} placeholder="-" />
-                <Button onClick={() => referralCode?.referral_code && copy(referralCode.referral_code, '邀请码已复制')}>一键复制</Button>
+                <Button onClick={() => referralCode?.referral_code && copy(referralCode.referral_code, t('quotaPage.inviteCodeCopied'))}>{t('quotaPage.copyInviteCode')}</Button>
               </Space.Compact>
 
               <Space.Compact style={{ width: '100%' }}>
                 <Input readOnly value={referralLink || ''} placeholder="-" />
-                <Button onClick={() => referralLink && copy(referralLink, '注册链接已复制')}>复制链接</Button>
+                <Button onClick={() => referralLink && copy(referralLink, t('quotaPage.inviteLinkCopied'))}>{t('quotaPage.copyInviteLink')}</Button>
               </Space.Compact>
 
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                可直接把“注册链接”分享给有需要的人，打开后会自动填入邀请码。
+                {t('quotaPage.shareLinkHint')}
               </Paragraph>
             </Space>
 
             <Divider />
 
             <Paragraph style={{ marginBottom: 0 }}>
-              已成功邀请：<span className="quota-pill">{referralStats?.total_referrals ?? referralCode?.referral_count ?? 0}</span> 人
+              {t('quotaPage.invitedCountLabel')} <span className="quota-pill">{referralStats?.total_referrals ?? referralCode?.referral_count ?? 0}</span> {t('quotaPage.peopleUnit')}
               {typeof referralStats?.total_bonus_earned === 'number' && (
                 <>
-                  ，累计获得：<span className="quota-pill">{referralStats.total_bonus_earned}</span> 额度
+                  ，{t('quotaPage.totalBonusLabel')} <span className="quota-pill">{referralStats.total_bonus_earned}</span> {t('quotaPage.quotaUnit')}
                 </>
               )}
             </Paragraph>
@@ -279,27 +283,27 @@ const Quota: React.FC = () => {
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card title="充值额度或VIP" loading={pageLoading}>
+          <Card title={t('quotaPage.cards.topupOrVip')} loading={pageLoading}>
             <Paragraph>
-              <Text strong>额度充值：</Text>0.3元 / 额度（1个学生成绩记录=1额度）
+              <Text strong>{t('quotaPage.topupQuotaLabel')}</Text>{t('quotaPage.topupQuotaValue')}
             </Paragraph>
             <Button type="primary" block onClick={() => setTopupOpen(true)}>
-              充值额度（扫码购买）
+              {t('quotaPage.topupQuotaButton')}
             </Button>
 
             <Divider plain>OR</Divider>
 
             <Paragraph>
-              <Text strong>VIP（月卡）：</Text>19.9元 / 30天（无限量使用）
+              <Text strong>{t('quotaPage.vipMonthlyLabel')}</Text>{t('quotaPage.vipMonthlyValue')}
             </Paragraph>
             <Button type="primary" block onClick={() => setVipOpen(true)}>
-              开通VIP（扫码购买）
+              {t('quotaPage.vipMonthlyButton')}
             </Button>
 
             <Divider />
 
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              付款完成后请联系管理员为你的账号充值额度/开通VIP。
+              {t('quotaPage.contactAdminAfterPay')}
             </Paragraph>
           </Card>
         </Col>
@@ -308,16 +312,16 @@ const Quota: React.FC = () => {
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col span={24}>
           <Card
-            title="消耗明细（最近50条）"
+            title={t('quotaPage.consumption.title')}
             extra={
               <Space wrap>
                 <Segmented
                   value={consumeTimeRange}
                   options={[
-                    { label: '过去1天', value: '1d' },
-                    { label: '过去7天', value: '7d' },
-                    { label: '过去1个月', value: '30d' },
-                    { label: '自定义起止', value: 'custom' },
+                    { label: t('quotaPage.timeRanges.1d'), value: '1d' },
+                    { label: t('quotaPage.timeRanges.7d'), value: '7d' },
+                    { label: t('quotaPage.timeRanges.30d'), value: '30d' },
+                    { label: t('quotaPage.timeRanges.custom'), value: 'custom' },
                   ]}
                   onChange={(v) => {
                     consumptionScrollYRef.current = window.scrollY;
@@ -339,13 +343,13 @@ const Quota: React.FC = () => {
                       showTime
                       value={consumeCustomStart}
                       onChange={(v) => setConsumeCustomStart(v)}
-                      placeholder="开始时间"
+                      placeholder={t('common.startTime')}
                     />
                     <DatePicker
                       showTime
                       value={consumeCustomEnd}
                       onChange={(v) => setConsumeCustomEnd(v)}
-                      placeholder="结束时间"
+                      placeholder={t('common.endTime')}
                     />
                   </Space>
                 )}
@@ -355,13 +359,16 @@ const Quota: React.FC = () => {
                     loadConsumption();
                   }}
                 >
-                  刷新
+                  {t('common.refresh')}
                 </Button>
               </Space>
             }
           >
             <Paragraph type="secondary" style={{ marginBottom: 12 }}>
-              汇总：消耗 <span className="quota-pill">{consumptionSummary?.total_consumed ?? 0}</span> 额度，任务 <span className="quota-pill">{consumptionSummary?.task_count ?? 0}</span> 次
+              {t('quotaPage.consumption.summary', {
+                count: consumptionSummary?.task_count ?? consumptionItems.length,
+                total: consumptionSummary?.total_consumed ?? 0,
+              })}
             </Paragraph>
             <Table
               rowKey="id"
@@ -377,13 +384,13 @@ const Quota: React.FC = () => {
       </Row>
 
       <Modal
-        title="充值额度（扫码购买）"
+        title={t('quotaPage.modals.topupTitle')}
         open={topupOpen}
         onCancel={() => setTopupOpen(false)}
         footer={null}
       >
         <Paragraph>
-          请使用闲鱼扫描二维码完成购买。购买后通过闲鱼联系管理员为你充值额度。
+          {t('quotaPage.modals.topupDesc')}
         </Paragraph>
         <Image
           width="100%"
@@ -393,13 +400,13 @@ const Quota: React.FC = () => {
       </Modal>
 
       <Modal
-        title="开通VIP（月卡，30天，扫码购买）"
+        title={t('quotaPage.modals.vipTitle')}
         open={vipOpen}
         onCancel={() => setVipOpen(false)}
         footer={null}
       >
         <Paragraph>
-          请使用闲鱼扫描二维码完成购买。购买后通过闲鱼联系管理员为你充值VIP。
+          {t('quotaPage.modals.vipDesc')}
         </Paragraph>
         <Image
           width="100%"

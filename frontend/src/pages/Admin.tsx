@@ -15,6 +15,7 @@ import {
   HomeOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { useAppStore } from '../store/appStore';
 import { adminApi } from '../services/apiClient';
@@ -66,6 +67,7 @@ interface AnalysisLog {
 }
 
 const Admin: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { language, theme, toggleTheme, setLanguage } = useAppStore();
@@ -107,7 +109,7 @@ const Admin: React.FC = () => {
         await loadLogs();
       }
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '加载数据失败');
+      message.error(error.response?.data?.detail || t('adminPage.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -133,10 +135,10 @@ const Admin: React.FC = () => {
   const handleSetVip = async (userId: number, isVip: boolean, days?: number) => {
     try {
       await adminApi.setVip(userId, isVip, days);
-      message.success(`VIP状态已${isVip ? '开通' : '取消'}`);
+      message.success(isVip ? t('adminPage.vipEnabled') : t('adminPage.vipDisabled'));
       loadUsers();
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '操作失败');
+      message.error(error.response?.data?.detail || t('adminPage.operationFailed'));
     }
   };
 
@@ -156,20 +158,20 @@ const Admin: React.FC = () => {
   const handleToggleActive = async (userId: number) => {
     try {
       await adminApi.toggleActive(userId);
-      message.success('用户状态已更新');
+      message.success(t('adminPage.userStatusUpdated'));
       loadUsers();
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '操作失败');
+      message.error(error.response?.data?.detail || t('adminPage.operationFailed'));
     }
   };
 
   const handleDeleteUser = async (userId: number) => {
     try {
       await adminApi.deleteUser(userId);
-      message.success('用户已删除');
+      message.success(t('adminPage.userDeleted'));
       loadUsers();
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '删除失败');
+      message.error(error.response?.data?.detail || t('adminPage.deleteFailed'));
     }
   };
 
@@ -178,19 +180,19 @@ const Admin: React.FC = () => {
     
     try {
       await adminApi.addQuota(selectedUser.id, quotaAmount, quotaDescription || undefined);
-      message.success(`已为 ${selectedUser.username} 添加 ${quotaAmount} 配额`);
+      message.success(t('adminPage.addQuotaSuccess', { username: selectedUser.username, amount: quotaAmount }));
       setQuotaModalVisible(false);
       setQuotaAmount(100);
       setQuotaDescription('');
       loadUsers();
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '添加配额失败');
+      message.error(error.response?.data?.detail || t('adminPage.addQuotaFailed'));
     }
   };
 
   const handleLogout = () => {
     logout();
-    message.success('已退出登录');
+    message.success(t('adminPage.loggedOut'));
     navigate('/login');
   };
 
@@ -207,18 +209,18 @@ const Admin: React.FC = () => {
       width: 80,
     },
     {
-      title: '用户名',
+      title: t('adminPage.users.columns.username'),
       dataIndex: 'username',
       key: 'username',
       render: (text, record) => (
         <Space>
           {text}
-          {record.is_admin && <Tag color="red">管理员</Tag>}
+          {record.is_admin && <Tag color="red">{t('adminPage.users.badges.admin')}</Tag>}
         </Space>
       ),
     },
     {
-      title: '邮箱',
+      title: t('adminPage.users.columns.email'),
       dataIndex: 'email',
       key: 'email',
     },
@@ -227,25 +229,28 @@ const Admin: React.FC = () => {
       dataIndex: 'is_vip',
       key: 'is_vip',
       render: (isVip) => (
-        isVip ? <Tag color="gold"><CrownOutlined /> VIP</Tag> : <Tag>普通</Tag>
+        isVip ? <Tag color="gold"><CrownOutlined /> VIP</Tag> : <Tag>{t('adminPage.users.badges.normal')}</Tag>
       ),
     },
     {
-      title: '状态',
+      title: t('adminPage.users.columns.status'),
       dataIndex: 'is_active',
       key: 'is_active',
       render: (isActive) => (
-        <Badge status={isActive ? 'success' : 'error'} text={isActive ? '正常' : '禁用'} />
+        <Badge
+          status={isActive ? 'success' : 'error'}
+          text={isActive ? t('adminPage.users.status.active') : t('adminPage.users.status.disabled')}
+        />
       ),
     },
     {
-      title: '配额余额',
+      title: t('adminPage.users.columns.quotaBalance'),
       dataIndex: 'quota_balance',
       key: 'quota_balance',
       render: (balance) => <Tag color="blue">{balance}</Tag>,
     },
     {
-      title: '已用配额',
+      title: t('adminPage.users.columns.quotaUsed'),
       dataIndex: 'range_quota_used',
       key: 'range_quota_used',
       sorter: (a, b) => (a.range_quota_used ?? 0) - (b.range_quota_used ?? 0),
@@ -253,7 +258,7 @@ const Admin: React.FC = () => {
       render: (v) => v ?? 0,
     },
     {
-      title: '推荐人数',
+      title: t('adminPage.users.columns.referrals'),
       dataIndex: 'range_referral_count',
       key: 'range_referral_count',
       sorter: (a, b) => (a.range_referral_count ?? 0) - (b.range_referral_count ?? 0),
@@ -261,7 +266,7 @@ const Admin: React.FC = () => {
       render: (v) => v ?? 0,
     },
     {
-      title: '消耗tokens',
+      title: t('adminPage.users.columns.tokens'),
       key: 'range_tokens',
       children: [
         {
@@ -285,13 +290,13 @@ const Admin: React.FC = () => {
       ],
     },
     {
-      title: '注册时间',
+      title: t('adminPage.users.columns.createdAt'),
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date) => new Date(date).toLocaleString('zh-CN'),
+      render: (date) => new Date(date).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US'),
     },
     {
-      title: '操作',
+      title: t('adminPage.users.columns.actions'),
       key: 'actions',
       render: (_, record) => (
         <Space>
@@ -306,14 +311,14 @@ const Admin: React.FC = () => {
               }
             }}
           >
-            {record.is_vip ? '取消VIP' : '设为VIP'}
+            {record.is_vip ? t('adminPage.users.actions.removeVip') : t('adminPage.users.actions.setVip')}
           </Button>
           <Button
             size="small"
             danger={record.is_active}
             onClick={() => handleToggleActive(record.id)}
           >
-            {record.is_active ? '禁用' : '启用'}
+            {record.is_active ? t('adminPage.users.actions.disable') : t('adminPage.users.actions.enable')}
           </Button>
           <Button
             size="small"
@@ -323,14 +328,14 @@ const Admin: React.FC = () => {
               setQuotaModalVisible(true);
             }}
           >
-            加配额
+            {t('adminPage.users.actions.addQuota')}
           </Button>
 
           <Popconfirm
-            title="确认删除用户"
-            description={`删除后无法恢复（将同时删除该用户的历史记录/日志）。确认删除 ${record.username} 吗？`}
-            okText="确认删除"
-            cancelText="取消"
+            title={t('adminPage.users.deleteConfirmTitle')}
+            description={t('adminPage.users.deleteConfirmDesc', { username: record.username })}
+            okText={t('adminPage.users.deleteConfirmOk')}
+            cancelText={t('common.cancel')}
             okButtonProps={{ danger: true }}
             onConfirm={() => handleDeleteUser(record.id)}
             disabled={record.id === user?.id}
@@ -340,7 +345,7 @@ const Admin: React.FC = () => {
               danger
               disabled={record.id === user?.id}
             >
-              删除用户
+              {t('adminPage.users.actions.deleteUser')}
             </Button>
           </Popconfirm>
         </Space>
@@ -357,48 +362,48 @@ const Admin: React.FC = () => {
       width: 80,
     },
     {
-      title: '用户',
+      title: t('adminPage.logs.columns.user'),
       dataIndex: 'username',
       key: 'username',
     },
     {
-      title: '文件名',
+      title: t('adminPage.logs.columns.filename'),
       dataIndex: 'filename',
       key: 'filename',
     },
     {
-      title: '学生数',
+      title: t('adminPage.logs.columns.studentCount'),
       dataIndex: 'student_count',
       key: 'student_count',
     },
     {
-      title: '配额消耗',
+      title: t('adminPage.logs.columns.quotaCost'),
       dataIndex: 'quota_cost',
       key: 'quota_cost',
       render: (cost) => <Tag color="orange">{cost}</Tag>,
     },
     {
-      title: '状态',
+      title: t('adminPage.logs.columns.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status) => {
         const statusConfig: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
-          success: { color: 'success', icon: <CheckCircleOutlined />, text: '成功' },
-          failed: { color: 'error', icon: <CloseCircleOutlined />, text: '失败' },
-          processing: { color: 'processing', icon: <FileTextOutlined />, text: '处理中' },
+          success: { color: 'success', icon: <CheckCircleOutlined />, text: t('adminPage.logs.status.success') },
+          failed: { color: 'error', icon: <CloseCircleOutlined />, text: t('adminPage.logs.status.failed') },
+          processing: { color: 'processing', icon: <FileTextOutlined />, text: t('adminPage.logs.status.processing') },
         };
         const config = statusConfig[status] || statusConfig.processing;
         return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
       },
     },
     {
-      title: '时间',
+      title: t('adminPage.logs.columns.time'),
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date) => new Date(date).toLocaleString('zh-CN'),
+      render: (date) => new Date(date).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US'),
     },
     {
-      title: '错误信息',
+      title: t('adminPage.logs.columns.error'),
       dataIndex: 'error_message',
       key: 'error_message',
       render: (msg) => msg ? <span style={{ color: 'red' }}>{msg}</span> : '-',
@@ -411,7 +416,7 @@ const Admin: React.FC = () => {
       <nav className="admin-navbar">
         <div className="admin-navbar-left">
           <img src="/logo.svg" alt="Logo" className="admin-logo" />
-          <span className="admin-title">{language === 'zh' ? 'AI成绩分析平台 - 管理后台' : 'AI Score Analyzer - Admin'}</span>
+          <span className="admin-title">{t('adminPage.title')}</span>
         </div>
         <div className="admin-navbar-right">
           <Button
@@ -419,17 +424,17 @@ const Admin: React.FC = () => {
             icon={<HomeOutlined />}
             onClick={() => navigate('/')}
           >
-            返回首页
+            {t('adminPage.backHome')}
           </Button>
-          <button className="toolbar-btn" onClick={handleLanguageToggle} title="Language">
+          <button className="toolbar-btn" onClick={handleLanguageToggle} title={t('common.language')}>
             {language === 'zh' ? '中' : 'EN'}
           </button>
-          <button className="toolbar-btn" onClick={toggleTheme} title="Theme">
+          <button className="toolbar-btn" onClick={toggleTheme} title={t('common.theme')}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
           <div className="admin-user-info">
             <span>{user?.username}</span>
-            <Tag color="red">管理员</Tag>
+            <Tag color="red">{t('adminPage.users.badges.admin')}</Tag>
           </div>
           <Button
             type="text"
@@ -437,7 +442,7 @@ const Admin: React.FC = () => {
             icon={<LogoutOutlined />}
             onClick={handleLogout}
           >
-            退出
+            {t('common.logout')}
           </Button>
         </div>
       </nav>
@@ -453,7 +458,7 @@ const Admin: React.FC = () => {
               label: (
                 <span>
                   <DashboardOutlined />
-                  数据概览
+                  {t('adminPage.tabs.dashboard')}
                 </span>
               ),
               children: stats && (
@@ -462,7 +467,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={6}>
                       <Card>
                         <Statistic
-                          title="总用户数"
+                          title={t('adminPage.stats.totalUsers')}
                           value={stats.total_users}
                           prefix={<TeamOutlined />}
                           valueStyle={{ color: '#3f8600' }}
@@ -472,7 +477,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={6}>
                       <Card>
                         <Statistic
-                          title="活跃用户"
+                          title={t('adminPage.stats.activeUsers')}
                           value={stats.active_users}
                           prefix={<UserOutlined />}
                           valueStyle={{ color: '#1890ff' }}
@@ -483,7 +488,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={6}>
                       <Card>
                         <Statistic
-                          title="VIP用户"
+                          title={t('adminPage.stats.vipUsers')}
                           value={stats.vip_users}
                           prefix={<CrownOutlined />}
                           valueStyle={{ color: '#cf1322' }}
@@ -493,7 +498,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={6}>
                       <Card>
                         <Statistic
-                          title="总分析次数"
+                          title={t('adminPage.stats.totalAnalyses')}
                           value={stats.total_analyses}
                           prefix={<LineChartOutlined />}
                           valueStyle={{ color: '#722ed1' }}
@@ -506,7 +511,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={8}>
                       <Card>
                         <Statistic
-                          title="成功分析"
+                          title={t('adminPage.stats.successAnalyses')}
                           value={stats.success_analyses}
                           suffix={`/ ${stats.total_analyses}`}
                           valueStyle={{ color: '#52c41a' }}
@@ -516,7 +521,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={8}>
                       <Card>
                         <Statistic
-                          title="失败分析"
+                          title={t('adminPage.stats.failedAnalyses')}
                           value={stats.failed_analyses}
                           suffix={`/ ${stats.total_analyses}`}
                           valueStyle={{ color: '#ff4d4f' }}
@@ -526,7 +531,7 @@ const Admin: React.FC = () => {
                     <Col xs={24} sm={12} lg={8}>
                       <Card>
                         <Statistic
-                          title="总配额消耗"
+                          title={t('adminPage.stats.totalQuotaUsed')}
                           value={stats.total_quota_used}
                           valueStyle={{ color: '#fa8c16' }}
                         />
@@ -536,7 +541,7 @@ const Admin: React.FC = () => {
 
                   <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
                     <Col span={24}>
-                      <Card title="总tokens消耗">
+                      <Card title={t('adminPage.stats.totalTokens')}> 
                         <Row gutter={[16, 16]}>
                           <Col xs={24} sm={12}>
                             <Statistic
@@ -562,7 +567,7 @@ const Admin: React.FC = () => {
               label: (
                 <span>
                   <TeamOutlined />
-                  用户管理
+                  {t('adminPage.tabs.users')}
                 </span>
               ),
               children: (
@@ -570,7 +575,7 @@ const Admin: React.FC = () => {
                   <div style={{ marginBottom: 16 }}>
                     <Space wrap>
                       <Input
-                        placeholder="搜索用户名或邮箱"
+                        placeholder={t('adminPage.users.searchPlaceholder')}
                         prefix={<SearchOutlined />}
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
@@ -580,10 +585,10 @@ const Admin: React.FC = () => {
                       <Segmented
                         value={userTimeRange}
                         options={[
-                          { label: '过去1天', value: '1d' },
-                          { label: '过去7天', value: '7d' },
-                          { label: '过去1个月', value: '30d' },
-                          { label: '自定义起止', value: 'custom' },
+                          { label: t('adminPage.timeRanges.1d'), value: '1d' },
+                          { label: t('adminPage.timeRanges.7d'), value: '7d' },
+                          { label: t('adminPage.timeRanges.30d'), value: '30d' },
+                          { label: t('adminPage.timeRanges.custom'), value: 'custom' },
                         ]}
                         onChange={(v) => {
                           const next = v as any;
@@ -600,22 +605,22 @@ const Admin: React.FC = () => {
                             showTime
                             value={userCustomStart}
                             onChange={(v) => setUserCustomStart(v)}
-                            placeholder="开始时间"
+                            placeholder={t('common.startTime')}
                           />
                           <DatePicker
                             showTime
                             value={userCustomEnd}
                             onChange={(v) => setUserCustomEnd(v)}
-                            placeholder="结束时间"
+                            placeholder={t('common.endTime')}
                           />
                         </Space>
                       )}
                       <Button type="primary" onClick={loadUsers}>
-                        搜索
+                        {t('common.search')}
                       </Button>
                     </Space>
                     <div style={{ marginTop: 8, color: '#666', fontSize: 12 }}>
-                      当前列表字段（已用配额 / 推荐人数 / tokens）按所选时间范围统计，默认过去7天。
+                      {t('adminPage.users.rangeHint')}
                     </div>
                   </div>
                   <Table
@@ -636,7 +641,7 @@ const Admin: React.FC = () => {
               label: (
                 <span>
                   <FileTextOutlined />
-                  分析日志
+                  {t('adminPage.tabs.logs')}
                 </span>
               ),
               children: (
@@ -654,7 +659,7 @@ const Admin: React.FC = () => {
 
         {/* 设置VIP弹窗 */}
         <Modal
-          title={`为 ${vipTargetUser?.username} 开通VIP`}
+          title={t('adminPage.vipModal.title', { username: vipTargetUser?.username || '' })}
           open={vipModalVisible}
           onOk={confirmSetVipWithDays}
           onCancel={() => {
@@ -662,12 +667,12 @@ const Admin: React.FC = () => {
             setVipTargetUser(null);
             setVipDays(30);
           }}
-          okText="确认"
-          cancelText="取消"
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
         >
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
-              <div style={{ marginBottom: 8 }}>VIP天数（必须为30的倍数）</div>
+              <div style={{ marginBottom: 8 }}>{t('adminPage.vipModal.daysLabel')}</div>
               <InputNumber
                 min={30}
                 step={30}
@@ -677,14 +682,14 @@ const Admin: React.FC = () => {
               />
             </div>
             <div style={{ color: '#666', fontSize: 12 }}>
-              示例：30=1个月，60=2个月，90=3个月
+              {t('adminPage.vipModal.daysHint')}
             </div>
           </Space>
         </Modal>
 
         {/* 添加配额弹窗 */}
         <Modal
-          title={`为 ${selectedUser?.username} 添加配额`}
+          title={t('adminPage.quotaModal.title', { username: selectedUser?.username || '' })}
           open={quotaModalVisible}
           onOk={handleAddQuota}
           onCancel={() => {
@@ -692,12 +697,12 @@ const Admin: React.FC = () => {
             setQuotaAmount(100);
             setQuotaDescription('');
           }}
-          okText="确认"
-          cancelText="取消"
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
         >
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
-              <div style={{ marginBottom: 8 }}>配额数量</div>
+              <div style={{ marginBottom: 8 }}>{t('adminPage.quotaModal.amountLabel')}</div>
               <InputNumber
                 min={1}
                 max={10000}
@@ -707,16 +712,16 @@ const Admin: React.FC = () => {
               />
             </div>
             <div>
-              <div style={{ marginBottom: 8 }}>备注（可选）</div>
+              <div style={{ marginBottom: 8 }}>{t('adminPage.quotaModal.noteLabel')}</div>
               <Input.TextArea
-                placeholder="添加配额的原因或备注"
+                placeholder={t('adminPage.quotaModal.notePlaceholder')}
                 value={quotaDescription}
                 onChange={(e) => setQuotaDescription(e.target.value)}
                 rows={3}
               />
             </div>
             <div style={{ color: '#666', fontSize: 12 }}>
-              当前配额余额: {selectedUser?.quota_balance || 0}
+              {t('adminPage.quotaModal.currentBalance', { balance: selectedUser?.quota_balance || 0 })}
             </div>
           </Space>
         </Modal>

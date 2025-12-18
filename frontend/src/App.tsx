@@ -13,7 +13,7 @@ import Home from './pages/Home';
 import History from './pages/History';
 import Admin from './pages/Admin';
 import Quota from './pages/Quota';
-import './i18n/config';
+import i18n from './i18n/config';
 import './styles/global.css';
 import './App.css';
 
@@ -24,6 +24,10 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    i18n.changeLanguage(language);
+  }, [language]);
 
   return (
     <ConfigProvider locale={language === 'zh' ? zhCN : enUS}>

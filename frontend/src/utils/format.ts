@@ -43,22 +43,49 @@ export const formatDateTime = (isoString: string | null | undefined): string => 
  * @returns 格式化后的相对时间字符串
  */
 export const formatRelativeTime = (isoString: string | null | undefined): string => {
+    return formatRelativeTimeWithLocale(isoString);
+};
+
+/**
+ * 格式化相对时间（支持中英文）
+ * @param isoString ISO格式的日期字符串
+ * @param locale 例如 'zh-CN' | 'en-US'。不传则使用浏览器语言（可用时）
+ */
+export const formatRelativeTimeWithLocale = (
+    isoString: string | null | undefined,
+    locale?: string,
+): string => {
     if (!isoString) return '-';
-    
+
     const date = new Date(isoString);
     if (Number.isNaN(date.getTime())) return '-';
+
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    
-    const seconds = Math.floor(diff / 1000);
+    const diffMs = now.getTime() - date.getTime();
+
+    const seconds = Math.floor(diffMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-    
-    if (seconds < 60) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    
+
+    const resolvedLocale =
+        locale || (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'zh-CN';
+
+    const isZh = resolvedLocale.toLowerCase().startsWith('zh');
+
+    if (typeof Intl !== 'undefined' && typeof Intl.RelativeTimeFormat !== 'undefined') {
+        const rtf = new Intl.RelativeTimeFormat(resolvedLocale, { numeric: 'auto' });
+        if (seconds < 60) return rtf.format(0, 'second');
+        if (minutes < 60) return rtf.format(-minutes, 'minute');
+        if (hours < 24) return rtf.format(-hours, 'hour');
+        if (days < 7) return rtf.format(-days, 'day');
+        return formatDateTime(isoString);
+    }
+
+    if (seconds < 60) return isZh ? '刚刚' : 'Just now';
+    if (minutes < 60) return isZh ? `${minutes}分钟前` : `${minutes} minutes ago`;
+    if (hours < 24) return isZh ? `${hours}小时前` : `${hours} hours ago`;
+    if (days < 7) return isZh ? `${days}天前` : `${days} days ago`;
+
     return formatDateTime(isoString);
 };

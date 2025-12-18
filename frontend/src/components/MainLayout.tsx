@@ -8,7 +8,7 @@ import { useAppStore } from '../store/appStore';
 import '../styles/layout.css';
 
 const MainLayout: React.FC = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { theme, language, toggleTheme, setLanguage } = useAppStore();
@@ -16,10 +16,6 @@ const MainLayout: React.FC = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
-
-  useEffect(() => {
-    i18n.changeLanguage(language);
-  }, [language, i18n]);
 
   const handleLogout = () => {
     logout();
@@ -34,11 +30,11 @@ const MainLayout: React.FC = () => {
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
-      label: t('common.profile') || '个人资料',
+      label: `${t('common.profile')}${t('common.wipSuffix')}`,
     },
     {
       key: 'settings',
-      label: t('common.settings') || '设置',
+      label: `${t('common.settings')}${t('common.wipSuffix')}`,
     },
     {
       type: 'divider',
@@ -58,7 +54,7 @@ const MainLayout: React.FC = () => {
           {/* 品牌Logo */}
           <a href="/" className="brand">
             <img src="/logo.svg" alt="Logo" className="brand-logo" />
-            <span className="brand-text">{language === 'zh' ? 'AI成绩分析平台' : 'AI Score Analyzer'}</span>
+            <span className="brand-text">{t('app.title')}</span>
           </a>
 
           {/* 主导航菜单 */}
@@ -89,12 +85,12 @@ const MainLayout: React.FC = () => {
           </div>
 
           {/* 语言切换 */}
-          <button className="toolbar-btn" onClick={handleLanguageToggle} title="Language">
+          <button className="toolbar-btn" onClick={handleLanguageToggle} title={t('common.language')}>
             {language === 'zh' ? '中' : 'EN'}
           </button>
 
           {/* 主题切换 */}
-          <button className="toolbar-btn" onClick={toggleTheme} title="Theme">
+          <button className="toolbar-btn" onClick={toggleTheme} title={t('common.theme')}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { StudentScore } from '../types/score';
 import { scoreApi } from '../services/apiClient';
 import { useAuthStore } from '../store/authStore';
+import { useAppStore } from '../store/appStore';
 import { useScoreStore, FileGroup } from '../store/scoreStore';
 import '../styles/home.css';
 
@@ -12,6 +13,7 @@ const { Dragger } = Upload;
 const Home: React.FC = () => {
   const { t } = useTranslation();
   const { user, updateUser } = useAuthStore();
+  const { language } = useAppStore();
   const { 
     fileGroups, 
     activeFileId, 
@@ -84,7 +86,7 @@ const Home: React.FC = () => {
       setPendingFile(null);
       setUploadProgress(5);
       setUploadStage('uploading');
-      setUploadStageText('📤 文件上传中...');
+      setUploadStageText(t('analysis.stageUploading'));
       setAiStage('idle');
       setAiProgress(0);
 
@@ -100,7 +102,7 @@ const Home: React.FC = () => {
           if (stage === 'uploading' && (elapsed > 900 || p >= 40)) {
             stage = 'parsing';
             setUploadStage('parsing');
-            setUploadStageText('🧩 正在解析文件...');
+            setUploadStageText(t('analysis.stageParsing'));
             return Math.max(p, 42);
           }
 
@@ -115,7 +117,7 @@ const Home: React.FC = () => {
       const result = response.data;
       
       if (!result.success || !result.data) {
-        throw new Error(result.message || '上传失败');
+        throw new Error(result.message || t('analysis.uploadFailed'));
       }
 
       const { data: scores, processing_info } = result;
@@ -123,14 +125,14 @@ const Home: React.FC = () => {
       window.clearInterval(uploadTimer);
       setUploadProgress(100);
       setUploadStage('ready');
-      setUploadStageText('✅ 解析完成');
+      setUploadStageText(t('analysis.stageParsed'));
 
       const backendFileId = Number(processing_info?.file_id);
       setPendingFile({
         id: fileId,
         backendFileId,
         filename: file.name,
-        uploadTime: new Date().toLocaleString('zh-CN'),
+        uploadTime: new Date().toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US'),
         scores: scores!,
         studentCount: processing_info?.student_count,
         quotaCost: processing_info?.quota_cost,
@@ -142,17 +144,21 @@ const Home: React.FC = () => {
       // 4. 保存到持久化 store（此时仅解析完成）
       setScores(scores!, file.name, processing_info);
 
-      message.success(`✨ 成功解析 ${processing_info?.student_count || scores!.length} 名学生的成绩，等待AI分析`);
+      message.success(
+        t('analysis.parseSuccessWaitAi', {
+          count: processing_info?.student_count || scores!.length,
+        })
+      );
     } catch (error: any) {
       setUploadStage('error');
-      setUploadStageText('❌ 上传失败，重试');
-      message.error(error.response?.data?.detail || error.message || '上传失败，请重试');
+      setUploadStageText(t('analysis.stageUploadError'));
+      message.error(error.response?.data?.detail || error.message || t('analysis.uploadFailedRetry'));
     }
   };
 
   const handleAnalyzeNow = async () => {
     if (!pendingFile || uploadStage !== 'ready') {
-      message.warning('请先上传文件并完成解析');
+      message.warning(t('analysis.needUploadParsed'));
       return;
     }
 
@@ -168,7 +174,7 @@ const Home: React.FC = () => {
         scores: pendingFile.scores,
         uploadTime: pendingFile.uploadTime,
         status: 'analyzing',
-        statusMessage: '🤖 AI分析中...',
+        statusMessage: t('analysis.stageAiAnalyzing'),
         studentCount: pendingFile.studentCount,
         quotaCost: pendingFile.quotaCost,
       };
@@ -202,7 +208,7 @@ const Home: React.FC = () => {
       const result = response.data;
 
       if (!result.success || !result.data) {
-        throw new Error(result.message || 'AI分析失败');
+        throw new Error(result.message || t('analysis.aiFailed'));
       }
 
       const { data: analyzedScores, processing_info } = result;
@@ -235,7 +241,7 @@ const Home: React.FC = () => {
         updateUser({ quota_balance: processing_info.quota_remaining });
       }
 
-      message.success('🤖 AI分析完成！');
+      message.success(t('analysis.aiCompleteToast'));
     } catch (error: any) {
       setAiStage('error');
       if (aiTimerRef.current) {
@@ -245,10 +251,15 @@ const Home: React.FC = () => {
       setAiProgress(0);
       setFileGroups(prev => prev.map(group =>
         group.id === activeFileId
-          ? { ...group, status: 'error', statusMessage: error.response?.data?.detail || error.message || 'AI分析失败，请重试' }
+          ? {
+              ...group,
+              status: 'error',
+              statusMessage:
+                error.response?.data?.detail || error.message || t('analysis.aiFailedRetry'),
+            }
           : group
       ));
-      message.error(error.response?.data?.detail || error.message || 'AI分析失败，请重试');
+      message.error(error.response?.data?.detail || error.message || t('analysis.aiFailedRetry'));
     } finally {
       setLoading(false);
     }
@@ -265,15 +276,15 @@ const Home: React.FC = () => {
       const a = document.createElement('a');
       a.href = url;
       const baseName = group.filename.replace(/\.[^/.]+$/, '');
-      a.download = `${baseName}-分析报告.${format}`;
+      a.download = `${baseName}-${t('analysis.reportSuffix')}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      message.success('导出成功！');
+      message.success(t('analysis.exportSuccess'));
     } catch (error) {
-      message.error('导出失败，请重试');
+      message.error(t('analysis.exportFailedRetry'));
     } finally {
       setLoading(false);
     }
@@ -282,7 +293,7 @@ const Home: React.FC = () => {
   const handleSearch = () => {
     const activeGroup = fileGroups.find(g => g.id === activeFileId);
     if (!activeGroup || activeGroup.status !== 'complete') {
-      message.warning('请先完成AI分析');
+      message.warning(t('analysis.needCompleteAiFirst'));
       return;
     }
 
@@ -301,10 +312,10 @@ const Home: React.FC = () => {
     
     if (filtered.length > 0) {
       setFilteredScores(filtered);
-      message.success(`找到 ${filtered.length} 名学生`);
+      message.success(t('analysis.searchFound', { count: filtered.length }));
     } else {
       setFilteredScores([]);
-      message.info('未找到匹配的学生');
+      message.info(t('analysis.searchNoMatch'));
     }
   };
 
@@ -398,7 +409,9 @@ const Home: React.FC = () => {
                   {(uploadStage === 'uploading' || uploadStage === 'parsing') && (
                     <Spin size="small" style={{ marginRight: 8 }} />
                   )}
-                  {uploadStage === 'idle' ? '📤 上传文件' : (uploadStageText || '处理中...')}
+                  {uploadStage === 'idle'
+                    ? t('analysis.uploadButtonIdle')
+                    : (uploadStageText || t('analysis.processing'))}
                 </span>
               </Button>
             </Upload>
@@ -432,7 +445,7 @@ const Home: React.FC = () => {
           <div className="section-header">
             <h3 className="section-title">
               <span>📊</span>
-              <span>分析记录</span>
+              <span>{t('analysis.records')}</span>
             </h3>
           </div>
 
@@ -451,10 +464,10 @@ const Home: React.FC = () => {
                 {group.status === 'uploading' && <Spin size="small" />}
                 {group.status === 'analyzing' && <Spin size="small" />}
                 {group.status === 'complete' && (
-                  <Tag color="success" className="status-tag">✓ 完成</Tag>
+                  <Tag color="success" className="status-tag">✓ {t('analysis.statusComplete')}</Tag>
                 )}
                 {group.status === 'error' && (
-                  <Tag color="error" className="status-tag">✗ 失败</Tag>
+                  <Tag color="error" className="status-tag">✗ {t('analysis.statusFailed')}</Tag>
                 )}
               </div>
             ))}
@@ -467,7 +480,7 @@ const Home: React.FC = () => {
           <div className="results-header">
             <div className="results-title">
               <span className="results-icon">📈</span>
-              <h3>成绩分析结果</h3>
+              <h3>{t('analysis.resultsTitle')}</h3>
             </div>
 
             {activeGroup && activeGroup.status === 'complete' && activeGroup.scores.length > 0 && (
@@ -477,14 +490,14 @@ const Home: React.FC = () => {
                   loading={loading}
                   className="btn-secondary"
                 >
-                  导出 Excel
+                  {t('analysis.exportExcel')}
                 </Button>
                 <Button 
                   onClick={() => handleExport('docx', activeGroup)}
                   loading={loading}
                   className="btn-secondary"
                 >
-                  导出 Word
+                  {t('analysis.exportWord')}
                 </Button>
               </div>
             )}
@@ -497,27 +510,27 @@ const Home: React.FC = () => {
                 <div className="stat-card glass">
                   <div className="stat-icon">👥</div>
                   <div className="stat-value">{statsStudentCount}</div>
-                  <div className="stat-label">学生人数</div>
+                  <div className="stat-label">{t('analysis.studentCount')}</div>
                 </div>
 
                 {statsQuotaCost !== undefined && (
                   <div className="stat-card glass">
                     <div className="stat-icon">💎</div>
                     <div className="stat-value">{statsQuotaCost}</div>
-                    <div className="stat-label">预计配额消耗</div>
+                    <div className="stat-label">{t('analysis.quotaCost')}</div>
                   </div>
                 )}
 
                 <div className="stat-card glass">
                   <div className="stat-icon">📝</div>
                   <div className="stat-value">{avgScoreText}</div>
-                  <div className="stat-label">平均分</div>
+                  <div className="stat-label">{t('analysis.avgScore')}</div>
                 </div>
               </div>
 
               {(!activeGroup || activeGroup.status !== 'complete') && (
                 <div className="status-info status-info--compact">
-                  <p>点击⚡一键AI分析后，获取分析结果</p>
+                  <p>{t('analysis.clickAnalyzeHint')}</p>
                 </div>
               )}
 
@@ -527,11 +540,11 @@ const Home: React.FC = () => {
                   <div className="results-search">
                     <div className="search-header">
                       <span className="search-icon">🔍</span>
-                      <span className="search-title">搜索学生成绩</span>
+                      <span className="search-title">{t('analysis.searchStudentsTitle')}</span>
                     </div>
                     <div className="search-input-group">
                       <Input
-                        placeholder={"输入学生姓名搜索，留空显示全部"}
+                        placeholder={t('analysis.searchStudentsPlaceholder')}
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
                         onPressEnter={handleSearch}
@@ -544,7 +557,7 @@ const Home: React.FC = () => {
                         disabled={!activeGroup}
                         className="btn-primary"
                       >
-                        搜索
+                        {t('analysis.searchButton')}
                       </Button>
                     </div>
                   </div>
@@ -562,13 +575,13 @@ const Home: React.FC = () => {
                             </div>
                             <div className="student-score">
                               <span className="score-value">{student.total_score}</span>
-                              <span className="score-label">分</span>
+                              <span className="score-label">{t('analysis.scoreUnit')}</span>
                             </div>
                           </div>
 
                           {student.analysis && (
                             <div className="student-analysis">
-                              <div className="analysis-label">📊 AI 分析</div>
+                              <div className="analysis-label">{t('analysis.aiAnalysisLabel')}</div>
                               <p className="analysis-text">{student.analysis}</p>
                             </div>
                           )}
@@ -584,12 +597,12 @@ const Home: React.FC = () => {
           {/* AI未处理前：结果区留空（仅保留占位提示） */}
           {(!activeGroup || activeGroup.status !== 'complete') && !shouldShowStats && (
             <div className="status-info">
-              <p>📤 请先上传文件并完成解析</p>
+              <p>{t('analysis.emptyBeforeUpload')}</p>
             </div>
           )}
 
           {activeGroup && activeGroup.status === 'complete' && displayScores.length === 0 && (
-            <Empty description={searchText.trim() ? "未找到匹配的学生" : "暂无数据"} />
+            <Empty description={searchText.trim() ? t('analysis.searchNoMatch') : t('analysis.noData')} />
           )}
         </Card>
     </div>

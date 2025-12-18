@@ -40,7 +40,7 @@ const Login: React.FC = () => {
       <div className="auth-card">
         <div className="auth-header">
           <img src="/logo.svg" alt="Logo" className="auth-logo" />
-          <h1 className="auth-title">AI成绩分析平台</h1>
+          <h1 className="auth-title">{t('app.title')}</h1>
           <p className="auth-subtitle">{t('auth.login')}</p>
         </div>
 
