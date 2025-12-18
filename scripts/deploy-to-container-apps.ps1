@@ -9,7 +9,7 @@ param(
     [string]$Location = "eastasia",
     
     [Parameter(Mandatory=$false)]
-    [string]$ContainerRegistry = "<acr-name>",
+    [string]$ContainerRegistry = "",
     
     [Parameter(Mandatory=$false)]
     [string]$StorageAccount = "stscoreanalyzer",
@@ -25,6 +25,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $ContainerRegistry) {
+    $ContainerRegistry = $env:ACR_NAME
+}
+
+if (-not $ContainerRegistry) {
+    Write-Host "❌ Missing Container Registry name. Pass -ContainerRegistry or set env var ACR_NAME." -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "🚀 开始部署到 Azure Container Apps" -ForegroundColor Cyan
 Write-Host "📋 配置信息:" -ForegroundColor Gray

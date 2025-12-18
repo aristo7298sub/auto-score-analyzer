@@ -4,10 +4,14 @@
 $ErrorActionPreference = "Stop"
 
 # 配置
-$REGISTRY = "<acr-name>"
+$REGISTRY = $env:ACR_NAME
 $RESOURCE_GROUP = "auto-score-analyzer-dev"
 $BACKEND_APP = "ca-score-analyzer-backend"
 $FRONTEND_APP = "ca-score-analyzer-frontend"
+
+if (-not $REGISTRY) {
+    throw "Missing ACR name. Set env var ACR_NAME or edit deploy-to-azure.ps1 to provide it."
+}
 
 # 获取后端 URL
 Write-Host "获取后端 URL..." -ForegroundColor Cyan
