@@ -182,6 +182,44 @@ docker-compose down
 - **生产环境：** 使用 Azure Container Apps 注入的环境变量
 - 两个文件**独立配置**，互不影响
 
+#### 模型配置（全能解析 / AI 分析）
+
+后端已支持“解析/分析模型分离”，并且**统一通过环境变量**配置：
+
+- **解析（Preview/Confirm 里的 AI 推断映射）**：
+	- `PARSING_MODEL`：建议填你的 Azure OpenAI **部署名（deployment name）**，例如 `o4-mini` 或你实际创建的部署名
+	- `PARSING_REASONING_EFFORT`：`low|medium|high`（默认 `high`）
+
+- **分析（一键 AI 分析）**：
+	- `ANALYSIS_MODEL`：同样填部署名
+	- `ANALYSIS_TEMPERATURE`：非推理模型可用（默认 `0.5`）
+
+回退规则（为了本地更好用）：
+- 如果你**没有配置** `PARSING_MODEL`，系统会自动回退使用 `ANALYSIS_MODEL`（再回退 `AZURE_OPENAI_DEPLOYMENT_NAME`）。
+
+本地最小必配（能跑通 Preview/Confirm + Analyze）：
+```env
+AZURE_OPENAI_API_KEY=<your-api-key>
+AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
+
+# 推荐：直接填部署名（deployment name）
+ANALYSIS_MODEL=<your-analysis-deployment>
+PARSING_MODEL=<your-parsing-deployment>
+
+# 可选：只要 endpoint 未设置 responses url，系统会自动拼出 /openai/v1/responses
+# AZURE_OPENAI_RESPONSES_URL=https://<your-resource>.openai.azure.com/openai/v1/responses
+```
+
+PowerShell 临时设置（不写入文件，仅当前终端生效）：
+```powershell
+$env:AZURE_OPENAI_API_KEY = "<your-api-key>"
+$env:AZURE_OPENAI_ENDPOINT = "https://<your-resource>.openai.azure.com"
+$env:PARSING_MODEL = "<your-parsing-deployment>"
+$env:ANALYSIS_MODEL = "<your-analysis-deployment>"
+
+python run.py
+```
+
 ### 端口占用
 
 如果端口被占用：

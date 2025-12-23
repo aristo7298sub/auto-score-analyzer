@@ -82,6 +82,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "`n========== 部署完成! ==========" -ForegroundColor Green
-Write-Host "前端地址: https://xscore-app.com" -ForegroundColor Cyan
+Write-Host "前端地址: https://<your-domain>" -ForegroundColor Cyan
 Write-Host "后端地址: $BACKEND_API_URL" -ForegroundColor Cyan
 Write-Host "镜像标签: latest, $GIT_HASH" -ForegroundColor Cyan

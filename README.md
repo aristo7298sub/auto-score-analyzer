@@ -75,6 +75,17 @@ AZURE_OPENAI_API_KEY=your-api-key
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
 AZURE_OPENAI_API_VERSION=2023-05-15
 
+# 模型配置（Responses API 下填写 deployment name）
+# 解析（预览/确认映射）：推荐使用推理模型部署
+PARSING_MODEL=o4-mini
+PARSING_REASONING_EFFORT=high
+
+# 分析（一键 AI 分析）：可用更便宜更快的部署
+ANALYSIS_MODEL=gpt-4o-mini
+ANALYSIS_TEMPERATURE=0.5
+
+# 说明：若未设置 PARSING_MODEL，会自动回退使用 ANALYSIS_MODEL（再回退 AZURE_OPENAI_DEPLOYMENT_NAME）
+
 # 数据库
 # Local-All 示例：
 DATABASE_URL=sqlite:///./data/score_analyzer.db

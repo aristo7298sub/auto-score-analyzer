@@ -121,11 +121,15 @@ const Home: React.FC = () => {
       }
 
       const { data: scores, processing_info } = result;
+      const stagesCompleted: string[] = Array.isArray(processing_info?.stages_completed)
+        ? processing_info.stages_completed
+        : [];
+      const parsedOnUpload = stagesCompleted.includes('parse');
 
       window.clearInterval(uploadTimer);
       setUploadProgress(100);
       setUploadStage('ready');
-      setUploadStageText(t('analysis.stageParsed'));
+      setUploadStageText(parsedOnUpload ? t('analysis.stageParsed') : t('analysis.stageUploadedWaitMapping'));
 
       const backendFileId = Number(processing_info?.file_id);
       setPendingFile({
@@ -133,22 +137,26 @@ const Home: React.FC = () => {
         backendFileId,
         filename: file.name,
         uploadTime: new Date().toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US'),
-        scores: scores!,
-        studentCount: processing_info?.student_count,
+        scores: parsedOnUpload ? (scores as StudentScore[]) : [],
+        studentCount: parsedOnUpload ? processing_info?.student_count : undefined,
         quotaCost: processing_info?.quota_cost,
       });
 
       // 未触发AI分析前，结果区保持为空
       setFilteredScores([]);
 
-      // 4. 保存到持久化 store（此时仅解析完成）
-      setScores(scores!, file.name, processing_info);
-
-      message.success(
-        t('analysis.parseSuccessWaitAi', {
-          count: processing_info?.student_count || scores!.length,
-        })
-      );
+      if (parsedOnUpload) {
+        // 兼容旧流程：上传即解析完成
+        setScores(scores!, file.name, processing_info);
+        message.success(
+          t('analysis.parseSuccessWaitAi', {
+            studentCount: processing_info?.student_count || (scores as any[])?.length || 0,
+          })
+        );
+      } else {
+        // 新流程：上传成功后需确认映射再解析
+        message.success(t('analysis.uploadSuccessWaitMapping'));
+      }
     } catch (error: any) {
       setUploadStage('error');
       setUploadStageText(t('analysis.stageUploadError'));
@@ -265,6 +273,8 @@ const Home: React.FC = () => {
     }
   };
 
+  // 映射确认流程已移除（upload 已完成解析）
+
   const handleExport = async (format: 'xlsx' | 'docx', group: FileGroup) => {
     try {
       setLoading(true);
@@ -351,7 +361,7 @@ const Home: React.FC = () => {
           <div className="upload-half upload-half--large">
             <div className="upload-card upload-card--compact">
               <Dragger
-                accept=".xlsx"
+                accept=".xlsx,.docx,.pptx"
                 multiple={false}
                 beforeUpload={(file) => {
                   handleUpload(file);
@@ -387,7 +397,7 @@ const Home: React.FC = () => {
         <div className="split-actions" aria-label="actions">
           <div className="split-actions-half split-actions-half--large">
             <Upload
-              accept=".xlsx"
+              accept=".xlsx,.docx,.pptx"
               multiple={false}
               beforeUpload={(file) => {
                 handleUpload(file);
@@ -504,6 +514,8 @@ const Home: React.FC = () => {
           </div>
 
           {/* 成绩统计：解析完成后即展示；AI完成后再展示搜索与学生结果 */}
+          {null}
+
           {shouldShowStats && statsScores.length > 0 && (
             <>
               <div className="stats-grid">

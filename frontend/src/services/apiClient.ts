@@ -144,6 +144,12 @@ export const scoreApi = {
 
   analyzeFile: (fileId: number, oneShotText?: string) =>
     apiClient.post(`/api/files/${fileId}/analyze`, { one_shot_text: oneShotText || '' }),
+
+  parsePreview: (fileId: number) =>
+    apiClient.post('/api/files/parse/preview', { file_id: fileId }),
+
+  parseConfirm: (sessionId: string, mapping?: any) =>
+    apiClient.post('/api/files/parse/confirm', { session_id: sessionId, mapping: mapping || null }),
   
   getStudent: (studentName: string) =>
     apiClient.get(`/api/student/${studentName}`),

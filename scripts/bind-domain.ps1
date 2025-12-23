@@ -1,11 +1,11 @@
-# 自定义域名绑定脚本 - xscore-app.com
+# 自定义域名绑定脚本 - example.com
 # 适用于 Azure Container Apps
 
 param(
     [string]$ResourceGroup = "rg-score-analyzer",
     [string]$FrontendApp = "frontend",
     [string]$BackendApp = "backend",
-    [string]$Domain = "xscore-app.com",
+    [string]$Domain = "example.com",
     [string]$Location = "eastasia"
 )
 

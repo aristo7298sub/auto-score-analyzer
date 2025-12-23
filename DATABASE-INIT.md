@@ -12,10 +12,10 @@
 
 1. **自动创建数据库表**
 2. **自动创建管理员账号**（如果是首次启动）
-   - 用户名: `aristo7298`
-   - 密码: `aristo7298`
-   - 配额: 10000
-   - 权限: 管理员
+  - 用户名: `<your-admin-username>`
+  - 密码: `<your-admin-password>`
+  - 配额: 10000
+  - 权限: 管理员
 
 ### 手动初始化（本地测试）
 
@@ -58,9 +58,9 @@ az containerapp update \
 
 **⚠️ 生产环境请务必修改默认密码！**
 
-- URL: https://xscore-app.com
-- 用户名: `aristo7298`
-- 密码: `aristo7298`
+- URL: https://<your-domain>
+- 用户名: `<your-admin-username>`
+- 密码: `<your-admin-password>`
 - 配额: 10000
 - 引荐码: 自动生成
 
@@ -74,13 +74,13 @@ az containerapp update \
 # 列出文件
 az storage file list \
   --share-name database \
-  --account-name autoscoreanalyzerstorage
+  --account-name <your-storage-account-name>
 
 # 删除数据库文件
 az storage file delete \
   --share-name database \
   --path score_analyzer.db \
-  --account-name autoscoreanalyzerstorage
+  --account-name <your-storage-account-name>
 ```
 
 ### 方法 2: 重启 Container App

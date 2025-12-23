@@ -7,10 +7,11 @@ import os
 import logging
 import tempfile
 import io
+import math
+import numbers
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, unquote
 from datetime import datetime
-from app.services.file_service import FileService
 from app.models.score import StudentScore, ScoreResponse
 from app.services.analysis_service import AnalysisService
 from app.services.storage_service import StorageService
@@ -20,12 +21,17 @@ from app.services.visualization_service import VisualizationService
 from app.core.database import get_db
 from app.core.security import get_current_user, check_quota
 from app.models.user import User, AnalysisLog, QuotaTransaction, ScoreFile
+from app.models.file_parse_session import FileParseSession
+from app.services.universal_parsing_service import UniversalParsingService
 import pandas as pd
 import uuid
+import json
+from datetime import timedelta
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+parse_logger = logging.getLogger("app.services.file_service")
 
 router = APIRouter()
 storage_service = StorageService()
@@ -46,12 +52,10 @@ async def upload_file(
 ):
     """
     上传成绩文件（需要认证）
-    - 上传并解析文件
-    - 保存解析结果到历史记录
+    - 上传后自动使用“全能解析”完成解析（无需用户确认映射）
     - 不调用 Azure OpenAI（等待用户点击“一键AI分析”再触发）
     """
     start_time = datetime.utcnow()
-    file_path = None
     
     try:
         logger.info(f"用户 {current_user.username} 开始处理文件上传: {file.filename}")
@@ -75,74 +79,76 @@ async def upload_file(
                 content_type=file.content_type
             )
             logger.info(f"文件保存成功: {file_url}")
-            
-            # 创建临时文件用于处理（因为pandas/docx需要文件路径）
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as temp_file:
-                temp_file.write(content)
-                file_path = temp_file.name
-            logger.info(f"创建临时文件: {file_path}")
-            
+
         except Exception as e:
             logger.error(f"保存文件失败: {str(e)}")
             raise HTTPException(status_code=500, detail=f"保存文件失败: {str(e)}")
         
         try:
-            # 根据文件类型处理
-            logger.info("开始处理文件内容")
-            if file.filename.endswith('.xlsx'):
-                logger.info("处理Excel文件")
-                student_scores = await FileService.process_excel(file_path)
-            elif file.filename.endswith('.docx'):
-                logger.info("处理Word文件")
-                student_scores = await FileService.process_word(file_path)
-            elif file.filename.endswith('.pptx'):
-                logger.info("处理PPT文件")
-                student_scores = await FileService.process_ppt(file_path)
-
-            if not student_scores:
-                logger.error("未能从文件中提取到有效的成绩数据")
-                raise HTTPException(status_code=400, detail="未能从文件中提取到有效的成绩数据")
-
-            student_count = len(student_scores)
-            logger.info(f"✅ 数据解析完成！成功提取到 {student_count} 个学生的成绩数据")
-
-            # 保存ScoreFile记录（包含解析结果JSON，暂不做AI分析）
-            import json
-            parsed_result_json = json.dumps([score.dict() for score in student_scores], ensure_ascii=False)
-
+            # 保存 ScoreFile 记录（稍后写入解析结果）
             score_file = ScoreFile(
                 user_id=current_user.id,
                 filename=file.filename,
                 file_size=len(content),
                 file_type=Path(file.filename).suffix.lstrip('.'),  # 去掉开头的点
-                student_count=student_count,
+                student_count=0,
                 file_url=file_url,
                 analysis_completed=False,
-                analysis_result=parsed_result_json,
-                analyzed_at=None
+                analysis_result=None,
+                analyzed_at=None,
             )
             db.add(score_file)
             db.commit()
             db.refresh(score_file)
 
+            # 自动全能解析（无需用户确认映射）
+            preview = UniversalParsingService.extract_preview(file_bytes=content, filename=file.filename)
+            mapping_result = await UniversalParsingService.infer_mapping(
+                file_type=preview.file_type,
+                ir=preview.ir,
+                preview=preview.preview,
+            )
+            student_scores = UniversalParsingService.parse_full(
+                file_bytes=content,
+                filename=file.filename,
+                mapping=mapping_result.mapping,
+            )
+
+            _log_parsed_scores(
+                student_scores,
+                context=f"upload:file_id={score_file.id}:name={file.filename}",
+                ir=preview.ir,
+                preview=preview.preview,
+            )
+
+            if not student_scores:
+                raise HTTPException(status_code=400, detail="未能从文件中提取到有效的成绩数据")
+
+            students_payload = _json_sanitize([s.dict() for s in student_scores])
+
+            score_file.student_count = len(student_scores)
+            score_file.analysis_completed = False
+            score_file.analyzed_at = None
+            score_file.analysis_result = json.dumps(students_payload, ensure_ascii=False, allow_nan=False)
+            db.commit()
+
             processing_time = (datetime.utcnow() - start_time).total_seconds()
 
-            response_data = ScoreResponse(
+            return ScoreResponse(
                 success=True,
-                message="文件上传并解析成功（等待AI分析）",
-                data=student_scores,
+                message="解析成功，请点击 AI 分析",
+                data=students_payload,
                 original_filename=file.filename,
                 processing_info={
                     "file_id": score_file.id,
-                    "student_count": student_count,
-                    "quota_cost": student_count,
+                    "student_count": score_file.student_count,
+                    "quota_cost": 0,
                     "analysis_completed": False,
                     "processing_time": processing_time,
-                    "stages_completed": ["upload", "parse", "save"]
-                }
+                    "stages_completed": ["upload", "save", "parse"],
+                    "parse_usage": getattr(mapping_result, "usage", None),
+                },
             )
-
-            return response_data
 
         except HTTPException as he:
             logger.error(f"❌ HTTP异常: {he.status_code} - {he.detail}")
@@ -157,13 +163,7 @@ async def upload_file(
             raise HTTPException(status_code=500, detail=f"处理文件失败: {str(e)}")
 
         finally:
-            # 清理临时文件
-            try:
-                if file_path and os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info("临时文件清理完成")
-            except Exception as e:
-                logger.error(f"清理临时文件失败: {str(e)}")
+            pass
     
     except HTTPException as he:
         logger.error(f"❌ HTTP异常: {he.status_code} - {he.detail}")
@@ -178,6 +178,357 @@ async def upload_file(
 
 class AnalyzeFileRequest(BaseModel):
     one_shot_text: str | None = None
+
+
+class ParsePreviewRequest(BaseModel):
+    file_id: int
+
+
+class ParseConfirmRequest(BaseModel):
+    session_id: str
+    mapping: Dict | None = None
+
+
+def _extract_storage_key(file_url: str) -> str:
+    if not file_url:
+        return file_url
+
+    # Azure Blob URL may contain URL-encoded blob name (e.g. Chinese chars/spaces).
+    # We must decode it back to the original blob name, otherwise read/delete fails.
+    try:
+        parsed = urlparse(file_url)
+        if parsed.scheme and parsed.netloc:
+            tail = parsed.path.split('/')[-1]
+        else:
+            normalized = file_url.replace('\\', '/')
+            tail = normalized.split('/')[-1]
+    except Exception:
+        normalized = file_url.replace('\\', '/')
+        tail = normalized.split('/')[-1]
+
+    return unquote(tail)
+
+
+def _deep_merge_dict(base: dict, override: dict) -> dict:
+    out = dict(base)
+    for k, v in (override or {}).items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_dict(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _json_sanitize(value):
+    """Convert values to be JSON-compliant (replace NaN/Infinity with None).
+
+    Starlette's JSONResponse uses json.dumps(..., allow_nan=False) so any NaN/Inf
+    will crash the response serialization.
+    """
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+
+    # Handle native floats
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+
+    # Handle numpy/pandas numeric scalars (and other Real types)
+    if isinstance(value, numbers.Real):
+        try:
+            f = float(value)
+            return f if math.isfinite(f) else None
+        except Exception:
+            return None
+
+    if isinstance(value, dict):
+        return {k: _json_sanitize(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_json_sanitize(v) for v in value]
+
+    return value
+
+
+def _log_parsed_scores(
+    student_scores: list,
+    *,
+    context: str,
+    ir: dict | None = None,
+    preview: dict | None = None,
+    max_students: int = 80,
+    max_items_per_student: int = 80,
+):
+    """Log parsed scores to help verify parsing correctness.
+
+    Format intentionally mimics the earlier file_service logs to make it easy
+    to eyeball correctness (per-student totals + per-knowledge-point deductions).
+    """
+    try:
+        total_students = len(student_scores or [])
+    except Exception:
+        total_students = -1
+
+    # Optional: Excel shape info from IR
+    try:
+        shape = (ir or {}).get("shape") if isinstance(ir, dict) else None
+        if isinstance(shape, dict) and shape.get("rows") is not None and shape.get("cols") is not None:
+            parse_logger.info("Excel文件读取成功，共 %s 行, %s 列", shape.get("rows"), shape.get("cols"))
+    except Exception:
+        pass
+
+    parse_logger.info("✅ 解析结果摘要[%s]: students=%s", context, total_students)
+    parse_logger.info("字段说明：知识点=category（用于汇总统计）；题目=question_name（更细的题目/描述，可能与知识点相同）")
+
+    if not student_scores:
+        return
+
+    # Compute knowledge points (unique categories)
+    try:
+        all_categories: set[str] = set()
+        for s in student_scores:
+            items = getattr(s, "scores", None) if not isinstance(s, dict) else s.get("scores")
+            if not items:
+                continue
+            for it in items:
+                c = getattr(it, "category", None) if not isinstance(it, dict) else it.get("category")
+                if isinstance(c, str) and c.strip():
+                    all_categories.add(c.strip())
+        if all_categories:
+            parse_logger.info("识别到 %d 个知识点", len(all_categories))
+    except Exception:
+        pass
+
+    students_to_log = student_scores[:max_students]
+    for idx, s in enumerate(students_to_log, start=1):
+        try:
+            name = getattr(s, "student_name", None) or (s.get("student_name") if isinstance(s, dict) else None)
+            total = getattr(s, "total_score", None) if not isinstance(s, dict) else s.get("total_score")
+            items = getattr(s, "scores", None) if not isinstance(s, dict) else s.get("scores")
+        except Exception:
+            name, total, items = None, None, None
+
+        parse_logger.info("处理学生: %s", name)
+        parse_logger.info("%s 总分: %s", name, total)
+
+        if not items:
+            continue
+
+        try:
+            items_to_log = list(items)[:max_items_per_student]
+        except Exception:
+            items_to_log = []
+
+        deducted_points = 0
+        for it in items_to_log:
+            try:
+                q = getattr(it, "question_name", None) if not isinstance(it, dict) else it.get("question_name")
+                d = getattr(it, "deduction", 0.0) if not isinstance(it, dict) else it.get("deduction", 0.0)
+                c = getattr(it, "category", None) if not isinstance(it, dict) else it.get("category")
+            except Exception:
+                q, d, c = None, 0.0, None
+
+            # Normalize for logging: NaN/Inf => 0
+            try:
+                d_val = float(d) if d is not None else 0.0
+                if not math.isfinite(d_val):
+                    d_val = 0.0
+            except Exception:
+                d_val = 0.0
+
+            # Always print per-item detail (score/lose style). If no deduction, mark it explicitly.
+            if d_val > 0:
+                deducted_points += 1
+                if abs(d_val - round(d_val)) < 1e-9:
+                    parse_logger.info("%s 在知识点 '%s' 有扣%d分标记", name, c, int(round(d_val)))
+                else:
+                    parse_logger.info("%s 在知识点 '%s' 有扣分标记(扣%s分)", name, c, d_val)
+            else:
+                # Keep it compact but still visible
+                parse_logger.info("%s | 知识点 '%s' | 题目 '%s' | 无扣分", name, c, q)
+
+        parse_logger.info("成功添加 %s 的成绩记录，共 %d 个扣分知识点", name, deducted_points)
+
+        try:
+            if len(items) > max_items_per_student:
+                parse_logger.info("... (items truncated: %d -> %d)", len(items), max_items_per_student)
+        except Exception:
+            pass
+
+    if total_students > max_students:
+        parse_logger.info("... (students truncated: %d -> %d)", total_students, max_students)
+
+
+@router.post("/files/parse/preview")
+async def parse_preview(
+    request: ParsePreviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """全能文件解析：预览（IR + AI mapping + preview samples）。"""
+    file_record = db.query(ScoreFile).filter(
+        ScoreFile.id == request.file_id,
+        ScoreFile.user_id == current_user.id,
+    ).first()
+
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not file_record.file_url:
+        raise HTTPException(status_code=400, detail="文件缺少存储地址，无法解析")
+
+    try:
+        storage_key = _extract_storage_key(file_record.file_url)
+        file_bytes = await file_storage.read_file(
+            storage_key if file_storage.storage_type == "azure" else file_record.file_url,
+            file_type="upload",
+        )
+    except Exception as e:
+        logger.error(
+            "读取文件失败: %s | storage_type=%s | file_url=%s | storage_key=%s",
+            e,
+            file_storage.storage_type,
+            file_record.file_url,
+            storage_key if 'storage_key' in locals() else None,
+        )
+        raise HTTPException(status_code=500, detail=f"读取文件失败: {str(e)}")
+
+    try:
+        preview = UniversalParsingService.extract_preview(file_bytes=file_bytes, filename=file_record.filename)
+        mapping_result = await UniversalParsingService.infer_mapping(
+            file_type=preview.file_type,
+            ir=preview.ir,
+            preview=preview.preview,
+        )
+    except Exception as e:
+        logger.error(f"生成解析预览失败: {e}")
+        raise HTTPException(status_code=500, detail=f"生成解析预览失败: {str(e)}")
+
+    session_id = str(uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+    session = FileParseSession(
+        id=session_id,
+        user_id=current_user.id,
+        score_file_id=file_record.id,
+        status="previewed",
+        file_type=preview.file_type,
+        ir_json=json.dumps(preview.ir, ensure_ascii=False),
+        ai_mapping_json=json.dumps(mapping_result.mapping, ensure_ascii=False),
+        expires_at=expires_at,
+    )
+    db.add(session)
+    db.commit()
+
+    return JSONResponse(
+        {
+            "success": True,
+            "message": "解析预览生成成功",
+            "data": {
+                "session_id": session_id,
+                "file_id": file_record.id,
+                "file_type": preview.file_type,
+                "confidence": mapping_result.confidence,
+                "mapping": mapping_result.mapping,
+                "errors": mapping_result.errors,
+                "recommendations": mapping_result.recommendations,
+                "ir": preview.ir,
+                "preview": preview.preview,
+                "usage": mapping_result.usage,
+                "expires_at": expires_at.isoformat(),
+            },
+        }
+    )
+
+
+@router.post("/files/parse/confirm")
+async def parse_confirm(
+    request: ParseConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """全能文件解析：确认映射并产出最终 StudentScore[]。"""
+    session = db.query(FileParseSession).filter(
+        FileParseSession.id == request.session_id,
+        FileParseSession.user_id == current_user.id,
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="解析会话不存在")
+    if session.expires_at and session.expires_at < datetime.utcnow():
+        session.status = "expired"
+        db.commit()
+        raise HTTPException(status_code=400, detail="解析会话已过期，请重新预览")
+
+    file_record = db.query(ScoreFile).filter(
+        ScoreFile.id == session.score_file_id,
+        ScoreFile.user_id == current_user.id,
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not file_record.file_url:
+        raise HTTPException(status_code=400, detail="文件缺少存储地址，无法解析")
+
+    try:
+        stored_mapping = json.loads(session.ai_mapping_json) if session.ai_mapping_json else {}
+    except Exception:
+        stored_mapping = {}
+
+    override_mapping = request.mapping if isinstance(request.mapping, dict) else {}
+    merged_mapping = _deep_merge_dict(stored_mapping, override_mapping)
+
+    try:
+        storage_key = _extract_storage_key(file_record.file_url)
+        file_bytes = await file_storage.read_file(
+            storage_key if file_storage.storage_type == "azure" else file_record.file_url,
+            file_type="upload",
+        )
+        student_scores = UniversalParsingService.parse_full(
+            file_bytes=file_bytes,
+            filename=file_record.filename,
+            mapping=merged_mapping,
+        )
+
+        _log_parsed_scores(
+            student_scores,
+            context=f"confirm:file_id={file_record.id}:name={file_record.filename}",
+        )
+    except Exception as e:
+        logger.error(
+            "确认解析失败: %s | storage_type=%s | file_url=%s | storage_key=%s",
+            e,
+            file_storage.storage_type,
+            file_record.file_url,
+            storage_key if 'storage_key' in locals() else None,
+        )
+        raise HTTPException(status_code=500, detail=f"确认解析失败: {str(e)}")
+
+    if not student_scores:
+        raise HTTPException(status_code=400, detail="未能从文件中提取到有效的成绩数据")
+
+    students_payload = _json_sanitize([s.dict() for s in student_scores])
+
+    file_record.student_count = len(student_scores)
+    file_record.analysis_completed = False
+    file_record.analyzed_at = None
+    # Persist strict JSON (no NaN/Infinity)
+    file_record.analysis_result = json.dumps(students_payload, ensure_ascii=False, allow_nan=False)
+
+    session.status = "confirmed"
+    session.confirmed_at = datetime.utcnow()
+
+    db.commit()
+
+    return JSONResponse(
+        {
+            "success": True,
+            "message": "确认解析成功",
+            "data": {
+                "file_id": file_record.id,
+                "student_count": file_record.student_count,
+                "students": students_payload,
+                "mapping": merged_mapping,
+            },
+        }
+    )
 
 
 @router.post("/files/{file_id}/analyze", response_model=ScoreResponse)

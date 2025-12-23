@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+import math
+
+from pydantic import BaseModel, field_validator
 from typing import List, Dict, Optional, Any
 
 class ScoreItem(BaseModel):
@@ -6,6 +8,28 @@ class ScoreItem(BaseModel):
     question_name: str
     deduction: float
     category: str
+
+    @field_validator('deduction', mode='before')
+    @classmethod
+    def _coerce_deduction(cls, v):
+        # Universal parsing may output None/blank/NaN/Inf; treat as 0 to keep response schema stable.
+        if v is None or v == "":
+            return 0.0
+
+        if isinstance(v, float):
+            return v if math.isfinite(v) else 0.0
+
+        # Strings like "nan" / "inf" sometimes leak from Excel/Pandas conversions.
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in {"nan", "+nan", "-nan", "inf", "+inf", "-inf", "infinity", "+infinity", "-infinity"}:
+                return 0.0
+
+        try:
+            f = float(v)
+            return f if math.isfinite(f) else 0.0
+        except Exception:
+            return 0.0
 
 class StudentScore(BaseModel):
     """学生成绩"""

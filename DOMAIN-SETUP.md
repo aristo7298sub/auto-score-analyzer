@@ -1,7 +1,7 @@
-# 域名配置快速指南 - xscore-app.com
+# 域名配置快速指南 - <your-domain>
 
 ## 🎯 目标
-将应用部署到 Azure Container Apps 并绑定自定义域名 `xscore-app.com`
+将应用部署到 Azure Container Apps 并绑定自定义域名 `<your-domain>`
 
 ## 📋 步骤概览
 
@@ -15,7 +15,7 @@ cd d:\Projects\2025\auto-score-analyzer
 
 ### 2️⃣ 配置DNS记录
 
-登录你的域名注册商(购买xscore-app.com的地方),添加以下DNS记录:
+登录你的域名注册商(购买域名的地方),添加以下DNS记录:
 
 #### 需要添加的记录:
 
@@ -35,12 +35,12 @@ az containerapp show --name frontend --resource-group rg-score-analyzer --query 
 ```
 记录类型: CNAME
 主机记录: @
-记录值: frontend.bluestone-abc123.eastasia.azurecontainerapps.io
+记录值: frontend.<your-unique-suffix>.eastasia.azurecontainerapps.io
 TTL: 600
 
 记录类型: CNAME  
 主机记录: www
-记录值: frontend.bluestone-abc123.eastasia.azurecontainerapps.io
+记录值: frontend.<your-unique-suffix>.eastasia.azurecontainerapps.io
 TTL: 600
 ```
 
@@ -50,7 +50,7 @@ TTL: 600
 
 ```powershell
 cd d:\Projects\2025\auto-score-analyzer
-.\scripts\bind-domain.ps1 -Domain "xscore-app.com"
+.\scripts\bind-domain.ps1 -Domain "<your-domain>"
 ```
 
 脚本会自动:
@@ -63,10 +63,10 @@ cd d:\Projects\2025\auto-score-analyzer
 ### 4️⃣ 验证部署
 
 访问以下地址验证:
-- https://xscore-app.com
-- https://www.xscore-app.com  
-- https://xscore-app.com/docs
-- https://xscore-app.com/health
+- https://<your-domain>
+- https://www.<your-domain>
+- https://<your-domain>/docs
+- https://<your-domain>/health
 
 ## 🔧 完整命令流程
 
@@ -85,7 +85,7 @@ $defaultDomain = az containerapp show --name frontend --resource-group rg-score-
 Write-Host "默认域名: $defaultDomain"
 
 # 5. 配置DNS后,绑定自定义域名
-.\scripts\bind-domain.ps1 -Domain "xscore-app.com"
+.\scripts\bind-domain.ps1 -Domain "<your-domain>"
 ```
 
 ## ⚠️ 常见问题
@@ -93,7 +93,7 @@ Write-Host "默认域名: $defaultDomain"
 ### DNS未生效
 ```powershell
 # 检查DNS解析
-nslookup xscore-app.com
+nslookup <your-domain>
 
 # 清除DNS缓存
 ipconfig /flushdns

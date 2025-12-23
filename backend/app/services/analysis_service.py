@@ -1,13 +1,14 @@
 from typing import List, Tuple, Dict, Any
+import math
 from app.models.score import StudentScore, ScoreAnalysis
 from app.core.config import settings
-from openai import AsyncAzureOpenAI
-import json
 import asyncio
+
+from app.services.azure_openai_responses_client import AzureOpenAIResponsesClient
 
 class AnalysisService:
     SYSTEM_ROLE_INSTRUCTION = (
-        "你是一位专业的小学数学教育分析专家。请根据学生的薄弱知识点，生成一段完整的成绩分析和改进建议。\n\n"
+        "你是一位专业的小学学科教育分析专家。请根据学生的薄弱知识点与扣分情况，生成一段完整的成绩分析和改进建议。\n\n"
     )
 
     SYSTEM_NOTES = (
@@ -38,65 +39,106 @@ class AnalysisService:
         )
 
     @staticmethod
-    def _extract_usage(response: Any) -> Dict[str, int]:
-        """Extract OpenAI usage fields in a defensive way."""
-        usage = getattr(response, "usage", None)
-        if not usage:
-            return {"prompt_tokens": 0, "completion_tokens": 0}
+    def _resolve_responses_url() -> str:
+        if settings.AZURE_OPENAI_RESPONSES_URL and settings.AZURE_OPENAI_RESPONSES_URL.strip():
+            return settings.AZURE_OPENAI_RESPONSES_URL.strip()
 
-        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-        return {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
+        if not settings.AZURE_OPENAI_ENDPOINT or not settings.AZURE_OPENAI_ENDPOINT.strip():
+            raise ValueError("AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_RESPONSES_URL must be set")
+
+        endpoint = settings.AZURE_OPENAI_ENDPOINT.strip().rstrip("/")
+        # If user provided https://.../openai/v1 already, normalize.
+        if endpoint.endswith("/openai/v1"):
+            return f"{endpoint}/responses"
+        if endpoint.endswith("/openai/v1/responses"):
+            return endpoint
+        return f"{endpoint}/openai/v1/responses"
+
+    @staticmethod
+    def _resolve_analysis_model() -> str:
+        # New preferred knob for /responses.
+        if settings.ANALYSIS_MODEL and settings.ANALYSIS_MODEL.strip():
+            return settings.ANALYSIS_MODEL.strip()
+        # Backward compatibility with older chat.completions path.
+        if settings.AZURE_OPENAI_DEPLOYMENT_NAME and settings.AZURE_OPENAI_DEPLOYMENT_NAME.strip():
+            return settings.AZURE_OPENAI_DEPLOYMENT_NAME.strip()
+        raise ValueError("ANALYSIS_MODEL (or AZURE_OPENAI_DEPLOYMENT_NAME) must be set")
 
     @staticmethod
     async def analyze_score(score: StudentScore, one_shot_text: str | None = None) -> Tuple[ScoreAnalysis, Dict[str, int]]:
         """分析学生成绩"""
         try:
-            # 初始化Azure OpenAI客户端
-            client = AsyncAzureOpenAI(
+            if not settings.AZURE_OPENAI_API_KEY:
+                raise ValueError("AZURE_OPENAI_API_KEY must be set")
+
+            client = AzureOpenAIResponsesClient(
+                responses_url=AnalysisService._resolve_responses_url(),
                 api_key=settings.AZURE_OPENAI_API_KEY,
-                api_version=settings.AZURE_OPENAI_API_VERSION,
-                azure_endpoint=settings.AZURE_OPENAI_ENDPOINT
+                timeout_seconds=float(settings.OPENAI_REQUEST_TIMEOUT_SECONDS or 60.0),
             )
 
-            # 构建提示信息 - 只列出学生的薄弱知识点
-            weak_points = [item.question_name for item in score.scores]
-            
-            prompt = f"""
-学生姓名：{score.student_name}
-总分：{score.total_score}分
+            # User prompt: directly list original Excel questions and their deduction.
+            # Only include deducted items (deduction > 0) to keep prompt focused and reduce token usage.
+            deducted_items = []
+            for item in (score.scores or []):
+                try:
+                    d = float(getattr(item, "deduction", 0.0) or 0.0)
+                    if not math.isfinite(d):
+                        d = 0.0
+                except Exception:
+                    d = 0.0
 
-该学生在以下知识点存在薄弱环节：
-{', '.join(weak_points)}
-"""
-            
-            # 用于返回的扣分汇总（按类别）
-            deduction_by_category = {}
-            for item in score.scores:
-                if item.category not in deduction_by_category:
-                    deduction_by_category[item.category] = []
-                deduction_by_category[item.category].append({
-                    "题目": item.question_name,
-                    "扣分项": item.deduction
+                if d > 0:
+                    deducted_items.append((item, d))
+
+            lines: list[str] = []
+            lines.append(f"学生姓名：{score.student_name}")
+            lines.append(f"总分：{score.total_score}分")
+            lines.append("")
+
+            if not deducted_items:
+                lines.append("扣分情况：本次未识别到明确扣分项（可能表示各题目未扣分，或原始文件未标记扣分）。")
+                lines.append("请基于学生总分与整体表现给出鼓励性评价，并给出保持优势与巩固复习的建议。")
+            else:
+                lines.append("扣分明细（按原始题目逐条列出）：")
+                for idx, (item, d) in enumerate(deducted_items, start=1):
+                    q = (getattr(item, "question_name", "") or "").strip() or "（未命名题目）"
+                    cat = (getattr(item, "category", "") or "").strip()
+                    # category is optional hint; keep it only when it adds extra information
+                    if cat and cat != q:
+                        lines.append(f"{idx}. 题目：{q}；扣分：{d}分；知识点/题型：{cat}")
+                    else:
+                        lines.append(f"{idx}. 题目：{q}；扣分：{d}分")
+
+            prompt = "\n".join(lines) + "\n"
+
+            # Return deduction summary keyed by category (as before), but only include deducted items.
+            deduction_by_category: dict[str, list[dict[str, Any]]] = {}
+            for item, d in deducted_items:
+                cat = (getattr(item, "category", "") or "").strip() or "（未分类）"
+                deduction_by_category.setdefault(cat, []).append({
+                    "题目": (getattr(item, "question_name", "") or "").strip() or "（未命名题目）",
+                    "扣分项": d,
                 })
 
             system_content = AnalysisService._build_system_prompt(one_shot_text=one_shot_text)
 
-            # 调用Azure OpenAI API
-            response = await client.chat.completions.create(
-                model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
-                messages=[
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5,
-                max_tokens=1000
+            result = await client.create_text_response(
+                model=AnalysisService._resolve_analysis_model(),
+                system_prompt=system_content,
+                user_prompt=prompt,
+                temperature=float(settings.ANALYSIS_TEMPERATURE or 0.5),
             )
 
-            usage = AnalysisService._extract_usage(response)
+            # Backward compatible keys used across the codebase.
+            usage = {
+                "prompt_tokens": int(result.usage.input_tokens or 0),
+                "completion_tokens": int(result.usage.output_tokens or 0),
+            }
 
-            # 获取AI生成的完整分析文本
-            analysis_text = response.choices[0].message.content.strip()
+            analysis_text = (result.text or "").strip()
+            if not analysis_text:
+                analysis_text = "（模型未返回有效文本）"
 
             # 返回分析结果
             return ScoreAnalysis(
