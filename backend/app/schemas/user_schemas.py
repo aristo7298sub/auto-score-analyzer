@@ -9,14 +9,15 @@ from datetime import datetime
 # 用户注册
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
-    email: Optional[EmailStr] = None  # 邮箱改为可选
+    email: EmailStr  # 注册必须填写邮箱
+    email_code: str = Field(..., min_length=6, max_length=6)
     password: str = Field(..., min_length=6, max_length=100)
     referral_code: Optional[str] = None  # 引荐码
 
 
 # 用户登录
 class UserLogin(BaseModel):
-    username: str
+    username: str  # 用户名或邮箱
     password: str
 
 
@@ -32,6 +33,8 @@ class UserInfo(BaseModel):
     id: int
     username: str
     email: Optional[EmailStr] = None
+    email_verified: bool = False
+    email_verified_at: Optional[datetime] = None
     is_vip: bool
     vip_expires_at: Optional[datetime] = None
     is_admin: bool
@@ -94,6 +97,8 @@ class AdminUserListItem(BaseModel):
     id: int
     username: str
     email: Optional[EmailStr] = None
+    email_verified: bool = False
+    email_verified_at: Optional[datetime] = None
     is_vip: bool
     vip_expires_at: Optional[datetime] = None
     is_admin: bool
@@ -147,6 +152,32 @@ class AdminQuotaTaskItem(BaseModel):
     quota_cost: int
     status: str
     created_at: datetime
+
+
+# ===== Stage-1 email flows (login/reset) =====
+
+
+class SendVerificationCodeRequest(BaseModel):
+    email: EmailStr
+
+
+class SendLoginCodeRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailLoginRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=6, max_length=100)
 
 
 # 管理员：统计数据

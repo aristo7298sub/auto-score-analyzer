@@ -1,6 +1,5 @@
-"""
-用户模型
-"""
+"""用户与相关数据模型"""
+
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -12,6 +11,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(100), unique=True, index=True, nullable=True)
+    email_verified = Column(Boolean, default=False)
+    email_verified_at = Column(DateTime(timezone=True), nullable=True)
     hashed_password = Column(String(255), nullable=False)
     
     # 用户类型
@@ -117,3 +118,21 @@ class ScoreFile(Base):
     
     # 关系
     user = relationship("User", back_populates="score_files")
+
+
+class EmailCode(Base):
+    """Email-based codes for login/password reset (DB-backed, hashed)."""
+
+    __tablename__ = "email_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), index=True, nullable=False)
+    purpose = Column(String(20), index=True, nullable=False)  # login | reset | verify
+    code_hash = Column(String(64), nullable=False)
+
+    attempts = Column(Integer, default=0)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    ip = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -54,11 +54,26 @@ apiClient.interceptors.response.use(
 
 // 认证API
 export const authApi = {
-  register: (data: { username: string; email: string; password: string; referral_code?: string }) =>
+  register: (data: { username: string; email: string; email_code: string; password: string; referral_code?: string }) =>
     apiClient.post('/api/auth/register', data),
-  
+
   login: (data: { username: string; password: string }) =>
     apiClient.post('/api/auth/login', data),
+
+  sendVerificationCode: (data: { email: string }) =>
+    apiClient.post('/api/auth/email/send-verification-code', data),
+
+  sendLoginCode: (data: { email: string }) =>
+    apiClient.post('/api/auth/email/send-login-code', data),
+
+  emailLogin: (data: { email: string; code: string }) =>
+    apiClient.post('/api/auth/email/login', data),
+
+  passwordResetRequest: (data: { email: string }) =>
+    apiClient.post('/api/auth/password/reset/request', data),
+
+  passwordResetConfirm: (data: { email: string; code: string; new_password: string }) =>
+    apiClient.post('/api/auth/password/reset/confirm', data),
   
   getCurrentUser: () =>
     apiClient.get('/api/auth/me'),

@@ -207,7 +207,33 @@ auto-score-analyzer/
 #### 认证
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
+- `POST /api/auth/email/send-verification-code` - 发送注册邮箱验证码（统一提示，不暴露邮箱是否存在）
+- `POST /api/auth/email/send-login-code` - 发送邮箱登录验证码（统一提示，不暴露邮箱是否存在）
+- `POST /api/auth/email/login` - 邮箱验证码登录
+- `POST /api/auth/password/reset/request` - 发起重置密码（统一提示，不暴露邮箱是否存在）
+- `POST /api/auth/password/reset/confirm` - 使用验证码重置密码
 - `GET /api/auth/me` - 获取当前用户信息
+
+说明：
+- 注册必须提供邮箱与验证码（先调用 `POST /api/auth/email/send-verification-code` 获取验证码）。
+- 密码登录支持“用户名或邮箱 + 密码”。
+
+### 本地用 ACS 真发邮件验证码（可选，但推荐联调注册）
+
+默认本地 `EMAIL_PROVIDER=dev` 会把验证码打印到后端日志。若你希望在本地开发时也能真正收到验证码邮件：
+
+1) 在 Azure Portal 创建 **Azure Communication Services** 资源并启用 **Email** 功能。
+2) 配置一个可用的发件人地址（Sender/From，需要在 ACS 中验证可用）。
+3) 在 `backend/.env`（不要提交到 GitHub）中设置：
+
+```env
+EMAIL_PROVIDER=acs
+ACS_EMAIL_CONNECTION_STRING=<your-acs-connection-string>
+ACS_EMAIL_SENDER=<your-verified-sender-email>
+EMAIL_LOG_CODES_IN_DEV=false
+```
+
+更详细步骤见 [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md)。
 
 #### 成绩分析
 - `POST /api/upload` - 上传并分析成绩文件

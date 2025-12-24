@@ -57,6 +57,20 @@ def ensure_schema_compatibility() -> None:
                 with engine.begin() as conn:
                     conn.execute(text('ALTER TABLE users ADD COLUMN vip_expires_at TIMESTAMP NULL'))
 
+            # Email verification fields (stage-1 auth)
+            if 'email_verified' not in cols:
+                with engine.begin() as conn:
+                    try:
+                        conn.execute(text('ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0'))
+                    except Exception:
+                        pass
+            if 'email_verified_at' not in cols:
+                with engine.begin() as conn:
+                    try:
+                        conn.execute(text('ALTER TABLE users ADD COLUMN email_verified_at TIMESTAMP NULL'))
+                    except Exception:
+                        pass
+
         if 'analysis_logs' in insp.get_table_names():
             cols = {c['name'] for c in insp.get_columns('analysis_logs')}
             to_add = []

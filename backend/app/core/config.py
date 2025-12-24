@@ -70,6 +70,22 @@ class Settings(BaseSettings):
     LOG_AOAI_REQUEST_MAX_CHARS: int = 120000
     # Whether to print the AOAI returned output text (already extracted from response JSON).
     LOG_AOAI_RESPONSE_TEXT: bool = False
+
+    # ========================================
+    # Email (Stage-1 auth: verification codes)
+    # ========================================
+    # dev: do not send real email (log the code)
+    # acs: send via Azure Communication Services Email
+    # disabled: do not send (useful for offline dev)
+    EMAIL_PROVIDER: Literal["dev", "acs", "disabled"] = "dev"
+
+    # Azure Communication Services (Email)
+    ACS_EMAIL_CONNECTION_STRING: Optional[str] = None
+    ACS_EMAIL_SENDER: Optional[str] = None  # e.g. no-reply@<primary-domain>
+
+    # Whether to log verification codes when provider is dev.
+    # NEVER enable this in production.
+    EMAIL_LOG_CODES_IN_DEV: bool = True
     
     class Config:
         # Load backend/.env no matter where the server is launched from.

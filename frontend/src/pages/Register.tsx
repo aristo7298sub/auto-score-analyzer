@@ -15,10 +15,13 @@ const Register: React.FC = () => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
+    email_code: '',
     password: '',
     referral_code: '',
   });
   const [loading, setLoading] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   // 通过注册链接预填邀请码：/register?ref=XXXX
   useEffect(() => {
@@ -29,6 +32,35 @@ const Register: React.FC = () => {
     }
   }, [location.search]);
 
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
+
+  const handleSendCode = async () => {
+    const email = (formData.email || '').trim();
+    if (!email) {
+      message.error(t('auth.emailRequired'));
+      return;
+    }
+
+    if (cooldownSeconds > 0) return;
+
+    setSendingCode(true);
+    try {
+      const resp = await authApi.sendVerificationCode({ email });
+      message.success(resp.data?.message || t('auth.codeSent'));
+      setCooldownSeconds(60);
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || t('auth.sendCodeFailed'));
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -36,13 +68,10 @@ const Register: React.FC = () => {
     try {
       const registerData: any = {
         username: formData.username,
+        email: formData.email.trim(),
+        email_code: formData.email_code.trim(),
         password: formData.password,
       };
-      
-      // 邮箱可选
-      if (formData.email) {
-        registerData.email = formData.email;
-      }
       
       if (formData.referral_code) {
         registerData.referral_code = formData.referral_code;
@@ -86,7 +115,7 @@ const Register: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">{t('auth.email')} <span style={{ color: '#999', fontWeight: 'normal' }}>{t('common.optionalSuffix')}</span></label>
+            <label htmlFor="email">{t('auth.email')}</label>
             <input
               id="email"
               type="email"
@@ -94,7 +123,34 @@ const Register: React.FC = () => {
               placeholder={t('auth.emailPlaceholder')}
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              required
             />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="email_code">{t('auth.verificationCode')}</label>
+            <input
+              id="email_code"
+              type="text"
+              inputMode="numeric"
+              className="input"
+              placeholder={t('auth.verificationCodePlaceholder')}
+              value={formData.email_code}
+              onChange={(e) => setFormData({ ...formData, email_code: e.target.value })}
+              required
+              minLength={6}
+              maxLength={6}
+            />
+            <button
+              type="button"
+              className="btn-primary btn-block"
+              onClick={handleSendCode}
+              disabled={sendingCode || loading || cooldownSeconds > 0}
+            >
+              {cooldownSeconds > 0
+                ? t('auth.resendInSeconds', { seconds: cooldownSeconds })
+                : (sendingCode ? t('common.loading') : t('auth.sendVerificationCode'))}
+            </button>
           </div>
 
           <div className="form-group">

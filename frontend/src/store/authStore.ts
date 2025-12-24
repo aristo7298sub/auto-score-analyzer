@@ -4,7 +4,9 @@ import { persist } from 'zustand/middleware';
 export interface User {
   id: number;
   username: string;
-  email: string;
+  email?: string;
+  email_verified?: boolean;
+  email_verified_at?: string | null;
   is_vip: boolean;
   vip_expires_at?: string | null;
   is_admin: boolean;

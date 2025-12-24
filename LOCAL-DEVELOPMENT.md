@@ -220,6 +220,77 @@ $env:ANALYSIS_MODEL = "<your-analysis-deployment>"
 python run.py
 ```
 
+### 阶段一登录（邮箱验证码 / 忘记密码）
+
+后端已提供“邮箱验证码登录”和“忘记密码/重置密码”的 API（用于阶段一登录体系）。
+
+注册（防止恶意/垃圾账号）：
+- 注册必须填写邮箱，并在提交注册时提供 6 位邮箱验证码。
+- `POST /api/auth/email/send-verification-code` 用于发送注册验证码。
+
+- **邮箱验证码登录（不暴露邮箱是否存在，统一提示）**
+	- `POST /api/auth/email/send-login-code`
+	- `POST /api/auth/email/login`
+
+- **忘记密码/重置密码（不暴露邮箱是否存在，统一提示）**
+	- `POST /api/auth/password/reset/request`
+	- `POST /api/auth/password/reset/confirm`
+
+安全策略（当前后端默认实现）：
+- 验证码：6 位数字
+- TTL：10 分钟
+- 单次使用：成功后标记为已使用
+- 错误次数限制：最多 5 次（超过后需要重新获取）
+- 发送冷却：同一邮箱同一用途 60 秒内不会重复发送
+
+开发环境注意：
+- 邮件发送支持切换到 Azure Communication Services（ACS）。本地默认 `EMAIL_PROVIDER=dev` 会将验证码打印到后端日志；生产环境建议 `EMAIL_PROVIDER=acs` 并配置 `ACS_EMAIL_CONNECTION_STRING` / `ACS_EMAIL_SENDER`。
+- 密码登录支持“用户名或邮箱 + 密码”。
+
+#### 本地启用 ACS（真发验证码邮件）
+
+你可以在本地跑后端，但让验证码邮件通过 ACS 真正发出（推荐用于联调注册流程）。
+
+1) 在 Azure Portal 创建资源
+- 创建 **Azure Communication Services**（Communication Services）资源。
+- 进入该资源的 **Email** 功能（Email / Email services）。
+
+2) 配置发件人（Sender / From）
+- 选择一种方式：
+	- **Azure 托管域名（最快）**：使用 Azure 提供/托管的发件域名（适合开发联调）。
+	- **自有域名（更正规）**：把你的域名接入并按提示配置 DNS（通常需要 SPF/DKIM 等记录）。
+- 在 Email 配置里创建/选择一个可用的发件人地址（From），例如：
+	- `no-reply@<primary-domain>`（自有域名）
+	- 或 Azure 托管域名下的发件地址（以 Portal 实际显示为准）
+
+3) 获取连接串（Connection String）
+- 进入 Communication Services 资源的 **Keys**（密钥/连接字符串）页面。
+- 复制 **Connection string**（不要提交到 GitHub）。
+
+4) 在本地后端启用 ACS
+
+在 `backend/.env`（不入库）中写入：
+
+```env
+# 邮件服务切换：dev | acs | disabled
+EMAIL_PROVIDER=acs
+
+# ACS Email（仅在 EMAIL_PROVIDER=acs 时必填）
+ACS_EMAIL_CONNECTION_STRING=<your-acs-connection-string>
+ACS_EMAIL_SENDER=<your-verified-sender-email>
+
+# 建议本地关闭“把验证码打印到日志”（避免误用）
+EMAIL_LOG_CODES_IN_DEV=false
+```
+
+5) 启动后端并验证
+- 启动后端：`python run.py`
+- 打开前端 `/register`：填写邮箱 → 点击“发送注册验证码” → 收到邮件 → 填写验证码完成注册。
+
+常见问题排查：
+- 若返回 500 且提示“验证码发送失败”：优先检查 `ACS_EMAIL_SENDER` 是否已在 ACS 中验证可用；连接串是否复制完整；以及 Email 功能是否已正确启用。
+- 若邮件进入垃圾箱：自有域名方式需要正确配置 SPF/DKIM；开发期建议先用 Azure 托管域名联调。
+
 ### 端口占用
 
 如果端口被占用：
