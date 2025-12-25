@@ -73,6 +73,13 @@ def send_email(message: EmailMessage) -> None:
         except EmailSendError:
             raise
         except Exception as exc:
-            raise EmailSendError("ACS email send failed") from exc
+            # Do not log connection string. Sender/recipient are OK to log in dev.
+            logger.exception(
+                "ACS email send failed: sender=%s to=%s exc=%s",
+                sender,
+                message.to_email,
+                exc,
+            )
+            raise EmailSendError(f"ACS email send failed: {exc}") from exc
 
     raise EmailSendError(f"Unknown email provider: {provider}")

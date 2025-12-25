@@ -312,8 +312,8 @@ async def send_login_code(
         send_email(
             EmailMessage(
                 to_email=email,
-                subject="登录验证码",
-                text_body=f"你的登录验证码是：{code}\n\n有效期 10 分钟。若非本人操作请忽略。",
+                subject="AI成绩分析平台 - 登录验证码",
+                text_body=f"AI成绩分析平台，你的登录验证码是：{code}\n\n有效期 10 分钟。若非本人操作请忽略。",
             )
         )
     except EmailSendError as exc:
@@ -422,8 +422,8 @@ async def password_reset_request(payload: PasswordResetRequest, request: Request
         send_email(
             EmailMessage(
                 to_email=email,
-                subject="重置密码验证码",
-                text_body=f"你的重置密码验证码是：{code}\n\n有效期 10 分钟。若非本人操作请忽略。",
+                subject="AI成绩分析平台 - 重置密码验证码",
+                text_body=f"AI成绩分析平台，你的重置密码验证码是：{code}\n\n有效期 10 分钟。若非本人操作请忽略。",
             )
         )
     except EmailSendError:
@@ -488,13 +488,17 @@ async def send_verification_code(
         send_email(
             EmailMessage(
                 to_email=email,
-                subject="注册验证码",
-                text_body=f"你的注册验证码是：{code}\n\n有效期 10 分钟。若非本人操作请忽略。",
+                subject="AI成绩分析平台 - 注册验证码",
+                text_body=f"AI成绩分析平台，你的注册验证码是：{code}\n\n有效期 10 分钟。若非本人操作请忽略。",
             )
         )
     except EmailSendError as exc:
         logger.exception("Failed to send verification email (provider=%s)", getattr(settings, "EMAIL_PROVIDER", None))
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="验证码发送失败，请稍后再试") from exc
+        hint = f"（{exc}）" if bool(getattr(settings, "DEBUG", False)) else ""
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"验证码发送失败，请稍后再试{hint}",
+        ) from exc
 
     return {"message": "如果邮箱可用，验证码已发送（请稍后查收）"}
 
