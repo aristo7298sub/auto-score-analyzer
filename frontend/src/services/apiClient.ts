@@ -63,11 +63,11 @@ export const authApi = {
   sendVerificationCode: (data: { email: string }) =>
     apiClient.post('/api/auth/email/send-verification-code', data),
 
-  sendLoginCode: (data: { email: string }) =>
-    apiClient.post('/api/auth/email/send-login-code', data),
+  bindEmailRequest: (data: { email: string }) =>
+    apiClient.post('/api/auth/email/bind/request', data),
 
-  emailLogin: (data: { email: string; code: string }) =>
-    apiClient.post('/api/auth/email/login', data),
+  bindEmailConfirm: (data: { email: string; code: string; password: string }) =>
+    apiClient.post('/api/auth/email/bind/confirm', data),
 
   passwordResetRequest: (data: { email: string }) =>
     apiClient.post('/api/auth/password/reset/request', data),

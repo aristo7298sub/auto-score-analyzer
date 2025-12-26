@@ -17,7 +17,7 @@ class UserRegister(BaseModel):
 
 # 用户登录
 class UserLogin(BaseModel):
-    username: str  # 用户名或邮箱
+    username: str  # 用户名
     password: str
 
 
@@ -154,20 +154,11 @@ class AdminQuotaTaskItem(BaseModel):
     created_at: datetime
 
 
-# ===== Stage-1 email flows (login/reset) =====
+# ===== Email flows (register/reset/bind) =====
 
 
 class SendVerificationCodeRequest(BaseModel):
     email: EmailStr
-
-
-class SendLoginCodeRequest(BaseModel):
-    email: EmailStr
-
-
-class EmailLoginRequest(BaseModel):
-    email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6)
 
 
 class PasswordResetRequest(BaseModel):
@@ -178,6 +169,16 @@ class PasswordResetConfirmRequest(BaseModel):
     email: EmailStr
     code: str = Field(..., min_length=6, max_length=6)
     new_password: str = Field(..., min_length=6, max_length=100)
+
+
+class BindEmailRequest(BaseModel):
+    email: EmailStr
+
+
+class BindEmailConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+    password: str = Field(..., min_length=6, max_length=100)
 
 
 # 管理员：统计数据

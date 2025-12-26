@@ -17,10 +17,10 @@ from .user_schemas import (
     AdminQuotaUsageItem,
     AdminQuotaTaskItem,
     SendVerificationCodeRequest,
-    SendLoginCodeRequest,
-    EmailLoginRequest,
     PasswordResetRequest,
     PasswordResetConfirmRequest,
+    BindEmailRequest,
+    BindEmailConfirmRequest,
 )
 
 __all__ = [
@@ -39,8 +39,8 @@ __all__ = [
     "AdminQuotaUsageItem",
     "AdminQuotaTaskItem",
     "SendVerificationCodeRequest",
-    "SendLoginCodeRequest",
-    "EmailLoginRequest",
     "PasswordResetRequest",
     "PasswordResetConfirmRequest",
+    "BindEmailRequest",
+    "BindEmailConfirmRequest",
 ]

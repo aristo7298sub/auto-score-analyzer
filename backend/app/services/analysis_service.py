@@ -8,7 +8,7 @@ from app.services.azure_openai_responses_client import AzureOpenAIResponsesClien
 
 class AnalysisService:
     SYSTEM_ROLE_INSTRUCTION = (
-        "你是一位专业的小学学科教育分析专家。请根据学生的薄弱知识点与扣分情况，生成一段完整的成绩分析和改进建议。\n\n"
+        "你是一位专业的小学学科教育分析专家。请根据学生的薄弱知识点与扣分情况，生成一段完整的成绩分析和改进建议，要鼓励与建议并存。\n\n"
     )
 
     SYSTEM_NOTES = (
@@ -33,7 +33,7 @@ class AnalysisService:
 
         return (
             AnalysisService.SYSTEM_ROLE_INSTRUCTION
-            + "以下是参考示例，请你只学习风格不要照搬。\n"
+            + "以下是参考示例，请你只学习风格，不要照搬，示例中的学科不具备参考价值，请你尊重用户真实提供的题目和学科描述。\n"
             + f"参考格式示例：{reference_example}\n\n"
             + AnalysisService.SYSTEM_NOTES
         )

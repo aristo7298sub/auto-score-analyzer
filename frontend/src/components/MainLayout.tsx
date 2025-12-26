@@ -34,7 +34,8 @@ const MainLayout: React.FC = () => {
     },
     {
       key: 'settings',
-      label: `${t('common.settings')}${t('common.wipSuffix')}`,
+      label: t('common.settings'),
+      onClick: () => navigate('/settings'),
     },
     {
       type: 'divider',

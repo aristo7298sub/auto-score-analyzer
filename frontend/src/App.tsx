@@ -13,6 +13,7 @@ import Home from './pages/Home';
 import History from './pages/History';
 import Admin from './pages/Admin';
 import Quota from './pages/Quota';
+import Settings from './pages/Settings';
 import i18n from './i18n/config';
 import './styles/global.css';
 import './App.css';
@@ -65,6 +66,7 @@ function App() {
             <Route index element={<Home />} />
             <Route path="history" element={<History />} />
             <Route path="quota" element={<Quota />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
 
           {/* 404 */}

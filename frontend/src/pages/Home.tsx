@@ -339,7 +339,12 @@ const Home: React.FC = () => {
     ?? pendingFile?.studentCount
     ?? (statsScores.length || 0);
 
-  const statsQuotaCost = activeGroup?.quotaCost ?? pendingFile?.quotaCost;
+  // Backend only charges quota when AI analysis runs. After parsing (before analysis),
+  // show an estimated quota cost so users understand what will be consumed.
+  const rawQuotaCost = activeGroup?.quotaCost ?? pendingFile?.quotaCost;
+  const statsQuotaCost = activeGroup?.status === 'complete'
+    ? rawQuotaCost
+    : (statsStudentCount || rawQuotaCost);
 
   const avgScore = statsScores.length
     ? statsScores.reduce((sum, s) => sum + s.total_score, 0) / statsScores.length
