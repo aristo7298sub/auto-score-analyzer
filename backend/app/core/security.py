@@ -3,7 +3,8 @@
 """
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
+from app.core.time import utcnow
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -39,9 +40,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """创建访问令牌"""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -97,7 +98,7 @@ async def get_current_user(
     # VIP 到期处理（best-effort）：到期则自动降级
     try:
         if user.is_vip and getattr(user, "vip_expires_at", None):
-            now = datetime.utcnow()
+            now = utcnow()
             # vip_expires_at 存在时按到期时间判断
             if user.vip_expires_at <= now:
                 user.is_vip = False
@@ -130,6 +131,6 @@ def check_quota(user: User, cost: int = 1) -> bool:
         if vip_expires_at is None:
             return True
         # 有到期时间则按是否未过期判断
-        if vip_expires_at > datetime.utcnow():
+        if vip_expires_at > utcnow():
             return True
     return user.quota_balance >= cost

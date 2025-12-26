@@ -12,6 +12,7 @@ import numbers
 from pathlib import Path
 from urllib.parse import quote, urlparse, unquote
 from datetime import datetime
+from app.core.time import utcnow
 from app.models.score import StudentScore, ScoreResponse
 from app.services.analysis_service import AnalysisService
 from app.services.storage_service import StorageService
@@ -403,7 +404,7 @@ async def parse_preview(
         raise HTTPException(status_code=500, detail=f"生成解析预览失败: {str(e)}")
 
     session_id = str(uuid.uuid4())
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = utcnow() + timedelta(minutes=10)
 
     session = FileParseSession(
         id=session_id,
@@ -453,7 +454,7 @@ async def parse_confirm(
 
     if not session:
         raise HTTPException(status_code=404, detail="解析会话不存在")
-    if session.expires_at and session.expires_at < datetime.utcnow():
+    if session.expires_at and session.expires_at < utcnow():
         session.status = "expired"
         db.commit()
         raise HTTPException(status_code=400, detail="解析会话已过期，请重新预览")
@@ -513,7 +514,7 @@ async def parse_confirm(
     file_record.analysis_result = json.dumps(students_payload, ensure_ascii=False, allow_nan=False)
 
     session.status = "confirmed"
-    session.confirmed_at = datetime.utcnow()
+    session.confirmed_at = utcnow()
 
     db.commit()
 
@@ -643,7 +644,7 @@ async def analyze_file(
 
         # 更新ScoreFile记录
         file_record.analysis_completed = True
-        file_record.analyzed_at = datetime.utcnow()
+        file_record.analyzed_at = utcnow()
         file_record.analysis_result = json.dumps([s.dict() for s in analyzed_scores], ensure_ascii=False)
 
         db.commit()

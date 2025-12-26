@@ -1,7 +1,7 @@
-# 域名配置快速指南 - <your-domain>
+# 域名配置快速指南（Azure Container Apps）
 
 ## 🎯 目标
-将应用部署到 Azure Container Apps 并绑定自定义域名 `<your-domain>`
+将前端应用部署到 Azure Container Apps 并绑定自定义域名（例如 `xscore-app.com` / `www.xscore-app.com`）。
 
 ## 📋 步骤概览
 
@@ -24,9 +24,9 @@ cd d:\Projects\2025\auto-score-analyzer
 | CNAME | @ | `<你的容器应用默认域名>` | 600 |
 | CNAME | www | `<你的容器应用默认域名>` | 600 |
 
-**获取默认域名:**
+**获取前端默认域名（FQDN）:**
 ```powershell
-az containerapp show --name frontend --resource-group rg-score-analyzer --query properties.configuration.ingress.fqdn -o tsv
+az containerapp show --name <frontend-app-name> --resource-group <resource-group> --query properties.configuration.ingress.fqdn -o tsv
 ```
 
 输出类似: `frontend.xxxx.eastasia.azurecontainerapps.io`
@@ -50,23 +50,22 @@ TTL: 600
 
 ```powershell
 cd d:\Projects\2025\auto-score-analyzer
-.\scripts\bind-domain.ps1 -Domain "<your-domain>"
+.\scripts\bind-custom-domain.ps1 -Domain "<your-domain>" -AdditionalDomains @("www.<your-domain>") -ResourceGroup "<resource-group>" -AppName "<frontend-app-name>"
 ```
 
 脚本会自动:
-- ✅ 验证DNS解析
-- ✅ 添加自定义域名到Container App
-- ✅ 申请并绑定免费SSL证书(Let's Encrypt)
-- ✅ 更新CORS和环境变量配置
-- ✅ 启用HTTPS自动重定向
+- ✅ 验证/提示 DNS 配置
+- ✅ 添加自定义域名到 Container App
+- ✅ 申请并绑定免费托管证书（Let's Encrypt）
 
 ### 4️⃣ 验证部署
 
 访问以下地址验证:
-- https://<your-domain>
-- https://www.<your-domain>
-- https://<your-domain>/docs
-- https://<your-domain>/health
+- 前端：`https://<your-domain>` / `https://www.<your-domain>`
+
+后端健康检查与 API 文档请使用后端自己的 FQDN（或你单独绑定的 `api.<your-domain>`）：
+- 后端：`https://<your-backend-fqdn>/health`
+- 后端 API Docs：`https://<your-backend-fqdn>/docs`
 
 ## 🔧 完整命令流程
 
@@ -81,11 +80,11 @@ az login
 .\scripts\deploy-to-container-apps.ps1
 
 # 4. 获取默认域名
-$defaultDomain = az containerapp show --name frontend --resource-group rg-score-analyzer --query properties.configuration.ingress.fqdn -o tsv
+$defaultDomain = az containerapp show --name <frontend-app-name> --resource-group <resource-group> --query properties.configuration.ingress.fqdn -o tsv
 Write-Host "默认域名: $defaultDomain"
 
-# 5. 配置DNS后,绑定自定义域名
-.\scripts\bind-domain.ps1 -Domain "<your-domain>"
+# 5. 配置DNS后,绑定自定义域名（root + www）
+.\scripts\bind-custom-domain.ps1 -Domain "<your-domain>" -AdditionalDomains @("www.<your-domain>") -ResourceGroup "<resource-group>" -AppName "<frontend-app-name>"
 ```
 
 ## ⚠️ 常见问题
@@ -102,35 +101,35 @@ ipconfig /flushdns
 ### SSL证书未生效
 证书申请需要5-10分钟,可以查看状态:
 ```powershell
-az containerapp hostname list --name frontend --resource-group rg-score-analyzer
+az containerapp hostname list --name <frontend-app-name> --resource-group <resource-group>
 ```
 
 ### 容器启动慢
 首次访问时容器需要启动(自动扩容从0开始):
 ```powershell
 # 设置最小副本数为1(避免冷启动)
-az containerapp update --name frontend --resource-group rg-score-analyzer --min-replicas 1
+az containerapp update --name <frontend-app-name> --resource-group <resource-group> --min-replicas 1
 ```
 
 ## 📊 监控与管理
 
 ### 查看应用状态
 ```powershell
-az containerapp show --name frontend --resource-group rg-score-analyzer
+az containerapp show --name <frontend-app-name> --resource-group <resource-group>
 ```
 
 ### 查看日志
 ```powershell
 # 实时日志
-az containerapp logs show --name frontend --resource-group rg-score-analyzer --follow
+az containerapp logs show --name <frontend-app-name> --resource-group <resource-group> --follow
 
 # 后端日志  
-az containerapp logs show --name backend --resource-group rg-score-analyzer --follow
+az containerapp logs show --name <backend-app-name> --resource-group <resource-group> --follow
 ```
 
 ### 重启应用
 ```powershell
-az containerapp revision restart --name frontend --resource-group rg-score-analyzer
+az containerapp revision restart --name <frontend-app-name> --resource-group <resource-group>
 ```
 
 ## 💰 成本优化
@@ -144,7 +143,7 @@ Container Apps按使用付费,以下是优化建议:
 2. **调整资源配额**
    ```powershell
    # 降低CPU/内存(如果够用)
-   az containerapp update --name frontend --resource-group rg-score-analyzer --cpu 0.25 --memory 0.5Gi
+   az containerapp update --name <frontend-app-name> --resource-group <resource-group> --cpu 0.25 --memory 0.5Gi
    ```
 
 3. **使用消费计划**(Consumption)

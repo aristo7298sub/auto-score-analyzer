@@ -1,5 +1,7 @@
 # 更新日志
 
+> 说明：该文件为阶段性整理，并非严格持续维护的 release notes。若与仓库实际代码/部署行为冲突，请以当前文档（尤其是 [CONTAINER-APPS-DEPLOYMENT.md](CONTAINER-APPS-DEPLOYMENT.md)）与 Git 历史为准。
+
 ## [2025-12-10] - UI优化与功能完善
 
 ### ✨ 新增功能

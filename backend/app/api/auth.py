@@ -4,7 +4,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime
 from datetime import timedelta
 import hashlib
 import secrets
@@ -12,6 +11,7 @@ import logging
 
 from ..core.database import get_db
 from ..core.config import settings
+from ..core.time import utcnow
 from ..core.security import (
     verify_password,
     get_password_hash,
@@ -64,7 +64,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         )
 
     # Verify email code (purpose=verify) before creating the account.
-    now = datetime.utcnow()
+    now = utcnow()
     code = (user_data.email_code or "").strip()
     row = (
         db.query(EmailCode)
@@ -214,7 +214,7 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
 
     # 更新最后登录时间
     try:
-        user.last_login = datetime.utcnow()
+        user.last_login = utcnow()
         db.commit()
         db.refresh(user)
     except Exception as e:
@@ -260,7 +260,7 @@ async def bind_email_request(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
 
     email = str(payload.email).strip().lower()
-    now = datetime.utcnow()
+    now = utcnow()
     ip = _client_ip(request)
     purpose = "bind"
 
@@ -345,7 +345,7 @@ async def bind_email_confirm(
 
     email = str(payload.email).strip().lower()
     code = (payload.code or "").strip()
-    now = datetime.utcnow()
+    now = utcnow()
 
     row = (
         db.query(EmailCode)
@@ -390,7 +390,7 @@ async def password_reset_request(payload: PasswordResetRequest, request: Request
     """Request a password reset code (generic response)."""
     email = str(payload.email).strip().lower()
     purpose = "reset"
-    now = datetime.utcnow()
+    now = utcnow()
     ip = _client_ip(request)
 
     # Cooldown: per email+purpose, 60 seconds
@@ -457,7 +457,7 @@ async def send_verification_code(
     """
     email = str(payload.email).strip().lower()
     purpose = "verify"
-    now = datetime.utcnow()
+    now = utcnow()
     ip = _client_ip(request)
 
     cooldown_seconds = 60
@@ -518,7 +518,7 @@ async def send_verification_code(
 async def password_reset_confirm(payload: PasswordResetConfirmRequest, request: Request, db: Session = Depends(get_db)):
     email = str(payload.email).strip().lower()
     code = (payload.code or "").strip()
-    now = datetime.utcnow()
+    now = utcnow()
 
     row = (
         db.query(EmailCode)

@@ -6,6 +6,9 @@ WORKDIR /app
 # 构建参数 - 可以在构建时通过 --build-arg 传入
 ARG VITE_API_URL
 
+# 确保 Vite 构建进程能读取到该值（Vite 会从环境变量读取 VITE_*）。
+ENV VITE_API_URL=$VITE_API_URL
+
 # 复制package文件
 COPY package*.json ./
 
@@ -20,6 +23,18 @@ COPY . .
 RUN if [ -n "$VITE_API_URL" ]; then \
       echo "VITE_API_URL=$VITE_API_URL" > .env.production; \
     fi
+
+# 生产构建必须显式注入真实后端地址，避免把占位符打进 bundle 导致 ERR_INVALID_URL / 不发请求。
+RUN if [ -z "$VITE_API_URL" ] || echo "$VITE_API_URL" | grep -q "<backend-fqdn>"; then \
+            echo "ERROR: VITE_API_URL is not set or is placeholder. Pass --build-arg VITE_API_URL=https://<your-backend-fqdn>"; \
+            exit 1; \
+        fi
+
+# 再做一次文件层面的兜底检查（防止覆盖逻辑未生效）
+RUN if grep -q "<backend-fqdn>" .env.production; then \
+            echo "ERROR: .env.production still contains placeholder <backend-fqdn>."; \
+            exit 1; \
+        fi
 
 # 构建生产版本（会自动使用 .env.production）
 RUN node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build

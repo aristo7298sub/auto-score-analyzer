@@ -69,22 +69,17 @@ cd auto-score-analyzer
 - Hybrid：参考模板 `backend/.env.clouddb.example`
 
 ```env
-# Azure OpenAI 配置
-AZURE_OPENAI_ENDPOINT=your-endpoint
+# Azure OpenAI 配置（必填）
 AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
-AZURE_OPENAI_API_VERSION=2023-05-15
 
-# 模型配置（Responses API 下填写 deployment name）
-# 解析（预览/确认映射）：推荐使用推理模型部署
+# 推荐（新架构）：Responses API + 模型分离
+# - 直接使用 /openai/v1/responses
+# - `PARSING_MODEL` / `ANALYSIS_MODEL` 填写 Azure OpenAI 的部署名（deployment name）
+AZURE_OPENAI_RESPONSES_URL=https://your-resource.openai.azure.com/openai/v1/responses
 PARSING_MODEL=o4-mini
 PARSING_REASONING_EFFORT=high
-
-# 分析（一键 AI 分析）：可用更便宜更快的部署
-ANALYSIS_MODEL=gpt-4o-mini
+ANALYSIS_MODEL=gpt-4.1-nano
 ANALYSIS_TEMPERATURE=0.5
-
-# 说明：若未设置 PARSING_MODEL，会自动回退使用 ANALYSIS_MODEL（再回退 AZURE_OPENAI_DEPLOYMENT_NAME）
 
 # 数据库
 # Local-All 示例：
@@ -132,7 +127,10 @@ npm run dev
 
 ### 生产部署
 
-详见 [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)
+生产/演示环境使用 Azure Container Apps（不再使用 Azure VM）。
+
+- 部署：见 [CONTAINER-APPS-DEPLOYMENT.md](CONTAINER-APPS-DEPLOYMENT.md)
+- 自定义域名：见 [DOMAIN-SETUP.md](DOMAIN-SETUP.md)
 
 ## 📦 项目结构
 
@@ -208,15 +206,15 @@ auto-score-analyzer/
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
 - `POST /api/auth/email/send-verification-code` - 发送注册邮箱验证码（统一提示，不暴露邮箱是否存在）
-- `POST /api/auth/email/send-login-code` - 发送邮箱登录验证码（统一提示，不暴露邮箱是否存在）
-- `POST /api/auth/email/login` - 邮箱验证码登录
 - `POST /api/auth/password/reset/request` - 发起重置密码（统一提示，不暴露邮箱是否存在）
 - `POST /api/auth/password/reset/confirm` - 使用验证码重置密码
+- `POST /api/auth/email/bind/request` - 登录后绑定邮箱：发送绑定验证码
+- `POST /api/auth/email/bind/confirm` - 登录后绑定邮箱：确认绑定
 - `GET /api/auth/me` - 获取当前用户信息
 
 说明：
 - 注册必须提供邮箱与验证码（先调用 `POST /api/auth/email/send-verification-code` 获取验证码）。
-- 密码登录支持“用户名或邮箱 + 密码”。
+- 当前日常登录方式为：用户名 + 密码（邮箱不作为登录标识）。
 
 ### 本地用 ACS 真发邮件验证码（可选，但推荐联调注册）
 
@@ -330,7 +328,8 @@ aristo7298sub
 │
 ├── docker-compose.yml          # Docker Compose 配置
 ├── README.md                   # 项目文档
-├── DEPLOYMENT-GUIDE.md         # 部署指南
+├── CONTAINER-APPS-DEPLOYMENT.md # Azure Container Apps 部署指南
+├── DOMAIN-SETUP.md              # 自定义域名配置
 └── LOCAL-DEVELOPMENT.md        # 本地开发指南
 ```
 │   └── Dockerfile

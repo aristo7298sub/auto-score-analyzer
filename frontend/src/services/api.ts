@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient, getApiUrl } from './apiClient';
 import { ScoreResponse, StudentScore } from '../types/score';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
@@ -72,7 +72,7 @@ export interface FileDetailResponse {
 // 创建一个独立的 axios 实例用于历史记录，避免被长时间的上传请求阻塞
 // 使用更短的超时时间，并通过 HTTP/1.1 pipeline 优化
 const historyApiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    baseURL: getApiUrl(),
     timeout: 10000, // 10秒超时，快速失败
     headers: {
         'Content-Type': 'application/json',

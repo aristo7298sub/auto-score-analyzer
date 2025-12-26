@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Auto Score Analyzer",
     description="智能成绩分析系统 - 支持多用户认证、配额管理和引荐系统",
-    version="2.0.0",
+    version="2.0.2",
     lifespan=lifespan
 )
 
@@ -64,7 +64,7 @@ app.include_router(api_router, prefix="/api", tags=["成绩分析"])
 async def root():
     return {
         "message": "欢迎使用 Auto Score Analyzer",
-        "version": "2.0.0",
+        "version": "2.0.2",
         "features": [
             "用户认证系统",
             "配额管理",
@@ -79,5 +79,5 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "auto-score-analyzer",
-        "version": "2.0.0"
+        "version": "2.0.2"
     } 

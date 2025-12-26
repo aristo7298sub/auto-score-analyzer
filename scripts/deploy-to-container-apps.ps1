@@ -21,7 +21,10 @@ param(
     [string]$BackendAppName = "backend",
     
     [Parameter(Mandatory=$false)]
-    [string]$FrontendAppName = "frontend"
+    [string]$FrontendAppName = "frontend",
+
+    [Parameter(Mandatory=$false)]
+    [string]$ImageTag = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +44,26 @@ Write-Host "  - 资源组: $ResourceGroup" -ForegroundColor Gray
 Write-Host "  - 位置: $Location" -ForegroundColor Gray
 Write-Host "  - Container Registry: $ContainerRegistry" -ForegroundColor Gray
 Write-Host "  - Storage Account: $StorageAccount" -ForegroundColor Gray
+if ($ImageTag) {
+    Write-Host "  - Image Tag: $ImageTag" -ForegroundColor Gray
+}
 Write-Host ""
+
+if (-not $ImageTag) {
+    try {
+        $mainPy = Get-Content -Raw -Path (Join-Path $PSScriptRoot "..\backend\app\main.py")
+        $m = [Regex]::Match($mainPy, 'version\s*=\s*"([^"]+)"')
+        if ($m.Success) {
+            $ImageTag = $m.Groups[1].Value
+        }
+    } catch {
+        # ignore
+    }
+}
+
+if (-not $ImageTag) {
+    $ImageTag = (Get-Date -Format "yyyyMMddHHmmss")
+}
 
 # 检查 Azure CLI
 Write-Host "🔍 检查 Azure CLI..." -ForegroundColor Cyan
@@ -98,12 +120,12 @@ Write-Host "✅ 凭证获取成功" -ForegroundColor Green
 
 # 4. 构建并推送后端镜像
 Write-Host "`n🔨 构建并推送后端镜像..." -ForegroundColor Cyan
-$backendImage = "$ContainerRegistry.azurecr.io/score-analyzer-backend:latest"
+$backendImage = "$ContainerRegistry.azurecr.io/score-analyzer-backend:$ImageTag"
 Write-Host "  镜像: $backendImage" -ForegroundColor Gray
 
 az acr build `
     --registry $ContainerRegistry `
-    --image score-analyzer-backend:latest `
+    --image score-analyzer-backend:$ImageTag `
     --file backend/Dockerfile `
     backend/
 
@@ -114,21 +136,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "✅ 后端镜像构建成功" -ForegroundColor Green
 
 # 5. 构建并推送前端镜像
-Write-Host "`n🔨 构建并推送前端镜像..." -ForegroundColor Cyan
-$frontendImage = "$ContainerRegistry.azurecr.io/score-analyzer-frontend:latest"
-Write-Host "  镜像: $frontendImage" -ForegroundColor Gray
 
-az acr build `
-    --registry $ContainerRegistry `
-    --image score-analyzer-frontend:latest `
-    --file frontend/Dockerfile `
-    frontend/
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ 前端镜像构建失败" -ForegroundColor Red
-    exit 1
-}
-Write-Host "✅ 前端镜像构建成功" -ForegroundColor Green
+# 注意：前端是 Vite 构建，VITE_API_URL 需要在构建时注入（Docker build-arg）。
+# 因此前端镜像的构建会在获取后端 FQDN 后再执行。
 
 # 6. 检查 Storage Account
 Write-Host "`n📦 检查 Storage Account..." -ForegroundColor Cyan
@@ -220,31 +230,120 @@ Get-Content $envFilePath | ForEach-Object {
     }
 }
 
+function Get-EnvValueOrEmpty([hashtable]$Vars, [string]$Key) {
+    if ($Vars.ContainsKey($Key)) { return $Vars[$Key] }
+    return ""
+}
+
+function Require-Env([hashtable]$Vars, [string[]]$Keys, [string]$Hint) {
+    $missing = @()
+    foreach ($k in $Keys) {
+        if (-not $Vars.ContainsKey($k) -or [string]::IsNullOrWhiteSpace($Vars[$k])) {
+            $missing += $k
+        }
+    }
+    if ($missing.Count -gt 0) {
+        Write-Host "❌ 缺少必要环境变量: $($missing -join ', ')" -ForegroundColor Red
+        if ($Hint) { Write-Host "💡 $Hint" -ForegroundColor Yellow }
+        exit 1
+    }
+}
+
+# 必要配置校验
+# 新架构：直接使用 /openai/v1/responses + model 字段，不强依赖 api-version / deployment-name。
+Require-Env $envVars @(
+    "AZURE_OPENAI_API_KEY",
+    "AZURE_OPENAI_RESPONSES_URL",
+    "PARSING_MODEL",
+    "ANALYSIS_MODEL"
+) "请在 backend/.env 中补齐以上变量（新架构所需）。"
+
+$emailProvider = (Get-EnvValueOrEmpty $envVars "EMAIL_PROVIDER")
+if ([string]::IsNullOrWhiteSpace($emailProvider)) { $emailProvider = "dev" }
+if ($emailProvider -eq "acs") {
+    Require-Env $envVars @(
+        "ACS_EMAIL_CONNECTION_STRING",
+        "ACS_EMAIL_SENDER"
+    ) "EMAIL_PROVIDER=acs 时必须提供 ACS_EMAIL_CONNECTION_STRING 与 ACS_EMAIL_SENDER。"
+}
+
 # 11. 部署后端 Container App
 Write-Host "`n🚀 部署后端 Container App..." -ForegroundColor Cyan
 
 $backendExists = az containerapp show --name $BackendAppName --resource-group $ResourceGroup 2>$null
 
+# 统一构造后端 env（明文 + secretref）
+$backendEnvVars = @(
+    "AZURE_OPENAI_API_KEY=secretref:openai-key",
+    "AZURE_OPENAI_RESPONSES_URL=$($envVars['AZURE_OPENAI_RESPONSES_URL'])",
+    "PARSING_MODEL=$($envVars['PARSING_MODEL'])",
+    "ANALYSIS_MODEL=$($envVars['ANALYSIS_MODEL'])",
+    "STORAGE_TYPE=azure",
+    "AZURE_STORAGE_CONNECTION_STRING=secretref:storage-conn",
+    "AZURE_STORAGE_ACCOUNT_NAME=$StorageAccount",
+    "AZURE_STORAGE_ACCOUNT_KEY=secretref:storage-key",
+    "AZURE_STORAGE_BLOB_ENDPOINT=$blobEndpoint",
+    "AZURE_STORAGE_UPLOADS_CONTAINER=uploads",
+    "AZURE_STORAGE_EXPORTS_CONTAINER=exports",
+    "AZURE_STORAGE_CHARTS_CONTAINER=charts",
+    "EMAIL_PROVIDER=$emailProvider"
+)
+
+$optionalBackendKeys = @(
+    "PARSING_REASONING_EFFORT",
+    "ANALYSIS_TEMPERATURE",
+    "OPENAI_REQUEST_TIMEOUT_SECONDS",
+    "LOG_LEVEL",
+    "DEBUG",
+    "BACKEND_URL",
+    "CORS_ORIGINS",
+    "EMAIL_LOG_CODES_IN_DEV",
+    "ACS_EMAIL_SENDER",
+    "DATABASE_URL"
+)
+
+foreach ($k in $optionalBackendKeys) {
+    if ($envVars.ContainsKey($k) -and -not [string]::IsNullOrWhiteSpace($envVars[$k])) {
+        $backendEnvVars += "$k=$($envVars[$k])"
+    }
+}
+
+$backendSecrets = @(
+    "openai-key=$($envVars['AZURE_OPENAI_API_KEY'])",
+    "storage-conn=$storageConnString",
+    "storage-key=$storageKey"
+)
+
+# SECRET_KEY：用于 JWT + 邮箱验证码 hash 的 pepper。
+# - 若 backend/.env 提供，则更新云端 secret（可用于首次部署 / 主动轮换）。
+# - 若未提供且后端应用已存在，则不覆盖（保留云端现有配置）。
+if ($envVars.ContainsKey('SECRET_KEY') -and -not [string]::IsNullOrWhiteSpace($envVars['SECRET_KEY'])) {
+    $backendSecrets += "jwt-secret=$($envVars['SECRET_KEY'])"
+    $backendEnvVars += "SECRET_KEY=secretref:jwt-secret"
+} elseif (-not $backendExists) {
+    Write-Host "❌ 首次创建后端应用时必须提供 SECRET_KEY（用于 JWT/验证码）。请在 backend/.env 中设置 SECRET_KEY。" -ForegroundColor Red
+    exit 1
+}
+
+if ($emailProvider -eq "acs") {
+    $backendSecrets += "acs-email-conn=$($envVars['ACS_EMAIL_CONNECTION_STRING'])"
+    $backendEnvVars += "ACS_EMAIL_CONNECTION_STRING=secretref:acs-email-conn"
+}
+
 if ($backendExists) {
     Write-Host "⚠️  后端应用已存在，正在更新..." -ForegroundColor Yellow
+    # 先确保 secrets 存在/更新
+    az containerapp secret set `
+        --name $BackendAppName `
+        --resource-group $ResourceGroup `
+        --secrets $backendSecrets `
+        --output none
+
     az containerapp update `
         --name $BackendAppName `
         --resource-group $ResourceGroup `
         --image $backendImage `
-        --set-env-vars `
-            "AZURE_OPENAI_ENDPOINT=$($envVars['AZURE_OPENAI_ENDPOINT'])" `
-            "AZURE_OPENAI_API_VERSION=$($envVars['AZURE_OPENAI_API_VERSION'])" `
-            "AZURE_OPENAI_DEPLOYMENT_NAME=$($envVars['AZURE_OPENAI_DEPLOYMENT_NAME'])" `
-            "STORAGE_TYPE=azure" `
-            "AZURE_STORAGE_ACCOUNT_NAME=$StorageAccount" `
-            "AZURE_STORAGE_BLOB_ENDPOINT=$blobEndpoint" `
-            "AZURE_STORAGE_UPLOADS_CONTAINER=uploads" `
-            "AZURE_STORAGE_EXPORTS_CONTAINER=exports" `
-            "AZURE_STORAGE_CHARTS_CONTAINER=charts" `
-        --replace-env-vars `
-            "AZURE_OPENAI_API_KEY=secretref:openai-key" `
-            "AZURE_STORAGE_CONNECTION_STRING=secretref:storage-conn" `
-            "AZURE_STORAGE_ACCOUNT_KEY=secretref:storage-key" `
+        --set-env-vars $backendEnvVars `
         --output none
 } else {
     Write-Host "⚠️  后端应用不存在，正在创建..." -ForegroundColor Yellow
@@ -259,22 +358,8 @@ if ($backendExists) {
         --registry-username $acrUsername `
         --registry-password $acrPassword `
         --secrets `
-            "openai-key=$($envVars['AZURE_OPENAI_API_KEY'])" `
-            "storage-conn=$storageConnString" `
-            "storage-key=$storageKey" `
-        --env-vars `
-            "AZURE_OPENAI_ENDPOINT=$($envVars['AZURE_OPENAI_ENDPOINT'])" `
-            "AZURE_OPENAI_API_KEY=secretref:openai-key" `
-            "AZURE_OPENAI_API_VERSION=$($envVars['AZURE_OPENAI_API_VERSION'])" `
-            "AZURE_OPENAI_DEPLOYMENT_NAME=$($envVars['AZURE_OPENAI_DEPLOYMENT_NAME'])" `
-            "STORAGE_TYPE=azure" `
-            "AZURE_STORAGE_CONNECTION_STRING=secretref:storage-conn" `
-            "AZURE_STORAGE_ACCOUNT_NAME=$StorageAccount" `
-            "AZURE_STORAGE_ACCOUNT_KEY=secretref:storage-key" `
-            "AZURE_STORAGE_BLOB_ENDPOINT=$blobEndpoint" `
-            "AZURE_STORAGE_UPLOADS_CONTAINER=uploads" `
-            "AZURE_STORAGE_EXPORTS_CONTAINER=exports" `
-            "AZURE_STORAGE_CHARTS_CONTAINER=charts" `
+            $backendSecrets `
+        --env-vars $backendEnvVars `
         --cpu 1.0 `
         --memory 2.0Gi `
         --min-replicas 0 `
@@ -293,6 +378,24 @@ $backendUrl = az containerapp show `
 
 $backendApiUrl = "https://$backendUrl"
 Write-Host "  🔗 后端 URL: $backendApiUrl" -ForegroundColor Cyan
+
+# 12.5 构建并推送前端镜像（注入 VITE_API_URL）
+Write-Host "`n🔨 构建并推送前端镜像（注入 VITE_API_URL）..." -ForegroundColor Cyan
+$frontendImage = "$ContainerRegistry.azurecr.io/score-analyzer-frontend:$ImageTag"
+Write-Host "  镜像: $frontendImage" -ForegroundColor Gray
+
+az acr build `
+    --registry $ContainerRegistry `
+    --image score-analyzer-frontend:$ImageTag `
+    --file frontend/Dockerfile `
+    --build-arg VITE_API_URL=$backendApiUrl `
+    frontend/
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ 前端镜像构建失败" -ForegroundColor Red
+    exit 1
+}
+Write-Host "✅ 前端镜像构建成功" -ForegroundColor Green
 
 # 13. 部署前端 Container App
 Write-Host "`n🚀 部署前端 Container App..." -ForegroundColor Cyan
@@ -337,6 +440,50 @@ $frontendUrl = az containerapp show `
     --output tsv
 
 $frontendWebUrl = "https://$frontendUrl"
+
+# 15. 回写后端 CORS（允许前端域名 + 自定义域名）
+Write-Host "`n🔧 更新后端 CORS_ORIGINS..." -ForegroundColor Cyan
+
+$corsOrigins = @($frontendWebUrl)
+
+try {
+    $customDomainNames = az containerapp ingress show `
+        --name $FrontendAppName `
+        --resource-group $ResourceGroup `
+        --query "properties.customDomains[].name" `
+        --output tsv
+
+    if ($customDomainNames) {
+        foreach ($d in ($customDomainNames -split "`n")) {
+            $domain = $d.Trim()
+            if ($domain) {
+                $corsOrigins += "https://$domain"
+            }
+        }
+    }
+} catch {
+    # ignore
+}
+
+# 如果 backend/.env 提供了 CORS_ORIGINS，则合并（避免覆盖用户手动扩展的 allowlist）
+if ($envVars.ContainsKey('CORS_ORIGINS') -and -not [string]::IsNullOrWhiteSpace($envVars['CORS_ORIGINS'])) {
+    foreach ($origin in ($envVars['CORS_ORIGINS'] -split ',')) {
+        $o = $origin.Trim()
+        if ($o) {
+            $corsOrigins += $o
+        }
+    }
+}
+
+$corsOriginsValue = ($corsOrigins | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique) -join ','
+
+az containerapp update `
+    --name $BackendAppName `
+    --resource-group $ResourceGroup `
+    --set-env-vars "CORS_ORIGINS=$corsOriginsValue" `
+    --output none
+
+Write-Host "✅ 后端 CORS 已更新: $corsOriginsValue" -ForegroundColor Green
 
 Write-Host "`n🎉 部署完成！" -ForegroundColor Green
 Write-Host "`n📋 访问信息:" -ForegroundColor Cyan

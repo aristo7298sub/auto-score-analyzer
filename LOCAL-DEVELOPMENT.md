@@ -142,7 +142,7 @@ git commit -m "Your changes description"
 git push
 ```
 
-推送代码不会自动发布到生产环境；Cloud-All（Azure Container Apps）发布方式请参考 [ENVIRONMENTS.md](ENVIRONMENTS.md) 与 [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)。
+推送代码不会自动发布到生产环境；Cloud-All（Azure Container Apps）发布方式请参考 [ENVIRONMENTS.md](ENVIRONMENTS.md) 与 [CONTAINER-APPS-DEPLOYMENT.md](CONTAINER-APPS-DEPLOYMENT.md)。
 
 ---
 
@@ -195,46 +195,42 @@ docker-compose down
 	- `ANALYSIS_TEMPERATURE`：非推理模型可用（默认 `0.5`）
 
 回退规则（为了本地更好用）：
-- 如果你**没有配置** `PARSING_MODEL`，系统会自动回退使用 `ANALYSIS_MODEL`（再回退 `AZURE_OPENAI_DEPLOYMENT_NAME`）。
+- 如果你**没有配置** `PARSING_MODEL`，系统会自动回退使用 `ANALYSIS_MODEL`。
 
 本地最小必配（能跑通 Preview/Confirm + Analyze）：
 ```env
 AZURE_OPENAI_API_KEY=<your-api-key>
-AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
+AZURE_OPENAI_RESPONSES_URL=https://<your-resource>.openai.azure.com/openai/v1/responses
 
 # 推荐：直接填部署名（deployment name）
 ANALYSIS_MODEL=<your-analysis-deployment>
 PARSING_MODEL=<your-parsing-deployment>
-
-# 可选：只要 endpoint 未设置 responses url，系统会自动拼出 /openai/v1/responses
-# AZURE_OPENAI_RESPONSES_URL=https://<your-resource>.openai.azure.com/openai/v1/responses
 ```
 
 PowerShell 临时设置（不写入文件，仅当前终端生效）：
 ```powershell
 $env:AZURE_OPENAI_API_KEY = "<your-api-key>"
-$env:AZURE_OPENAI_ENDPOINT = "https://<your-resource>.openai.azure.com"
+$env:AZURE_OPENAI_RESPONSES_URL = "https://<your-resource>.openai.azure.com/openai/v1/responses"
 $env:PARSING_MODEL = "<your-parsing-deployment>"
 $env:ANALYSIS_MODEL = "<your-analysis-deployment>"
 
 python run.py
 ```
 
-### 阶段一登录（邮箱验证码 / 忘记密码）
+### 认证与邮箱（注册验证 / 忘记密码 / 绑定邮箱）
 
-后端已提供“邮箱验证码登录”和“忘记密码/重置密码”的 API（用于阶段一登录体系）。
+当前系统的日常登录方式为：**用户名 + 密码**（不使用“邮箱验证码登录”）。
 
-注册（防止恶意/垃圾账号）：
-- 注册必须填写邮箱，并在提交注册时提供 6 位邮箱验证码。
-- `POST /api/auth/email/send-verification-code` 用于发送注册验证码。
-
-- **邮箱验证码登录（不暴露邮箱是否存在，统一提示）**
-	- `POST /api/auth/email/send-login-code`
-	- `POST /api/auth/email/login`
-
-- **忘记密码/重置密码（不暴露邮箱是否存在，统一提示）**
+邮箱仅用于以下场景：
+- 注册邮箱验证码（防垃圾账号）
+	- `POST /api/auth/email/send-verification-code`
+	- `POST /api/auth/register`
+- 忘记密码 / 重置密码（统一提示，不暴露邮箱是否存在）
 	- `POST /api/auth/password/reset/request`
 	- `POST /api/auth/password/reset/confirm`
+- 登录后绑定邮箱（以及确认绑定）
+	- `POST /api/auth/email/bind/request`
+	- `POST /api/auth/email/bind/confirm`
 
 安全策略（当前后端默认实现）：
 - 验证码：6 位数字
@@ -245,7 +241,7 @@ python run.py
 
 开发环境注意：
 - 邮件发送支持切换到 Azure Communication Services（ACS）。本地默认 `EMAIL_PROVIDER=dev` 会将验证码打印到后端日志；生产环境建议 `EMAIL_PROVIDER=acs` 并配置 `ACS_EMAIL_CONNECTION_STRING` / `ACS_EMAIL_SENDER`。
-- 密码登录支持“用户名或邮箱 + 密码”。
+- 登录仅用户名+密码；邮箱不作为登录标识。
 
 #### 本地启用 ACS（真发验证码邮件）
 

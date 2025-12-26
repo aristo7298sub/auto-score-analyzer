@@ -2,18 +2,27 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
 
 // 获取API基础URL
-const getApiUrl = () => {
-  const configured = import.meta.env.VITE_API_URL as string | undefined;
+export const getApiUrl = () => {
+  const configuredRaw = import.meta.env.VITE_API_URL as string | undefined;
+  const configured = (configuredRaw || '').trim();
+
+  // Guard against placeholder values accidentally baked into the build.
+  // If this happens in production, requests may be blocked (mixed content) or never sent.
+  const isPlaceholder = configured.includes('<backend-fqdn>');
 
   // In local dev we prefer the Vite proxy (same-origin) to avoid CORS/preflight.
   // Production/preview builds should still use an explicit backend URL.
   if (import.meta.env.DEV) {
-    if (!configured || configured === 'http://localhost:8000') {
+    if (!configured || configured === 'http://localhost:8000' || isPlaceholder) {
       return '';
     }
   }
 
-  return configured || 'http://localhost:8000';
+  if (!configured || isPlaceholder) {
+    return 'http://localhost:8000';
+  }
+
+  return configured;
 };
 
 // 创建axios实例
