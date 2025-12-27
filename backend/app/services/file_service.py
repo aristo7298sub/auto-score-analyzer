@@ -9,14 +9,29 @@ from app.models.score import StudentScore, ScoreItem
 # 配置日志
 logger = logging.getLogger(__name__)
 
+
+# NOTE (legacy):
+# 当前主链路解析已切换到 UniversalParsingService（支持 xlsx/docx/pptx，IR -> AI 映射 -> 确定性解析）。
+# 本文件保留的是旧版/固定格式的解析实现，便于对照或回退；默认情况下不被 API 端点调用。
+
 class FileService:
+    """Legacy file parsing helpers (kept for reference).
+
+    主链路请参考 UniversalParsingService。
+    """
+
     @staticmethod
     async def process_excel(file_path: str) -> List[StudentScore]:
         """
-        处理Excel文件并提取成绩信息
-        新格式：第一行为知识点，第一列（从第二行开始）为学生姓名，
-        单元格有值表示该学生在该知识点有扣分（仅作标记，不代表真实扣分），
-        空值表示不扣分，最后一列为总分
+        【Legacy】处理 Excel 文件并提取成绩信息（固定格式假设）。
+
+        说明：当前项目主链路已采用 UniversalParsingService，不再局限于下述特定格式。
+        这里描述的“新格式”是旧实现的输入假设：
+        - 第一行为知识点（表头）
+        - 第一列（从第二行开始）为学生姓名
+        - 单元格有值表示该学生在该知识点有扣分（仅作标记，不代表真实扣分）
+        - 空值表示不扣分
+        - 最后一列为总分
         """
         try:
             logger.info(f"开始读取Excel文件: {file_path}")

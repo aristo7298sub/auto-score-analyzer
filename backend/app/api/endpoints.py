@@ -32,7 +32,7 @@ from datetime import timedelta
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-parse_logger = logging.getLogger("app.services.file_service")
+parse_logger = logging.getLogger("app.services.universal_parsing_service")
 
 router = APIRouter()
 storage_service = StorageService()
@@ -666,21 +666,41 @@ async def analyze_file(
             },
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
+    except HTTPException as he:
+        # Best-effort: persist failure reason for admin logs.
         try:
             db.rollback()
         except Exception:
             pass
         processing_time = (datetime.utcnow() - start_time).total_seconds()
-        analysis_log.status = "failed"
-        analysis_log.error_message = str(e)
-        analysis_log.processing_time = processing_time
         try:
+            analysis_log.status = "failed"
+            analysis_log.error_message = f"HTTPException {he.status_code}: {he.detail}"
+            analysis_log.processing_time = processing_time
             db.commit()
         except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception as e:
+        logger.exception("AI分析失败: file_id=%s user_id=%s", file_record.id, current_user.id)
+        try:
             db.rollback()
+        except Exception:
+            pass
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        try:
+            analysis_log.status = "failed"
+            analysis_log.error_message = f"{type(e).__name__}: {str(e)}"
+            analysis_log.processing_time = processing_time
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
         raise HTTPException(status_code=500, detail=f"AI分析失败: {str(e)}")
 
 @router.get("/student/{student_name}", response_model=ScoreResponse)

@@ -10,7 +10,7 @@ import logging
 from app.core.config import settings
 
 # Use the same logger name as the parsing logs so it shows up consistently in the console.
-logger = logging.getLogger("app.services.file_service")
+logger = logging.getLogger("app.services.universal_parsing_service")
 
 
 @dataclass(frozen=True)

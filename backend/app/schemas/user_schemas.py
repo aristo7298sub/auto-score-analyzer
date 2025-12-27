@@ -77,6 +77,9 @@ class QuotaConsumptionResponse(BaseModel):
 # 分析日志
 class AnalysisLogInfo(BaseModel):
     id: int
+    user_id: int
+    # Admin logs page expects username; populated by admin API via JOIN.
+    username: Optional[str] = None
     filename: str
     file_type: str
     student_count: int

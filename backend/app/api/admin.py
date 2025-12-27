@@ -458,23 +458,30 @@ async def get_analysis_logs(
     - 仅管理员可用
     - 支持按状态和用户筛选
     """
-    query = db.query(AnalysisLog)
+    # Join User so admin UI can display username.
+    query = db.query(AnalysisLog, User.username).join(User, User.id == AnalysisLog.user_id)
     
     if status_filter:
         query = query.filter(AnalysisLog.status == status_filter)
-    
+
     if user_id:
         query = query.filter(AnalysisLog.user_id == user_id)
-    
-    logs = (
+
+    rows = (
         query
         .order_by(desc(AnalysisLog.created_at))
         .limit(limit)
         .offset(offset)
         .all()
     )
-    
-    return [AnalysisLogInfo.from_orm(log) for log in logs]
+
+    items: List[AnalysisLogInfo] = []
+    for log, username in rows:
+        base = AnalysisLogInfo.model_validate(log).model_dump()
+        base["username"] = username
+        items.append(AnalysisLogInfo(**base))
+
+    return items
 
 
 @router.get("/users/{user_id}/logs", response_model=List[AnalysisLogInfo])
@@ -504,5 +511,11 @@ async def get_user_logs(
         .offset(offset)
         .all()
     )
-    
-    return [AnalysisLogInfo.from_orm(log) for log in logs]
+
+    items: List[AnalysisLogInfo] = []
+    for log in logs:
+        base = AnalysisLogInfo.model_validate(log).model_dump()
+        base["username"] = user.username
+        items.append(AnalysisLogInfo(**base))
+
+    return items
