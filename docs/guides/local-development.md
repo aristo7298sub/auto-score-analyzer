@@ -6,7 +6,7 @@
 - **B. 本地开发 + 云端数据库（Hybrid）**：代码在本机跑，账号/配额/历史记录走云端 DB
 - **C. 纯云端（Azure Container Apps）**：前后端都在 ACA
 
-详情见 [ENVIRONMENTS.md](ENVIRONMENTS.md)。
+详情见 [environments.md](environments.md)。
 
 ## 📋 前提条件
 
@@ -131,7 +131,7 @@ npm run dev
 - 前端：`npm run build`
 - 后端：`python -m compileall -q .`
 
-2) 构建 + 发布：参考 [ENVIRONMENTS.md](ENVIRONMENTS.md) 的 Cloud-All 发布模板。
+2) 构建 + 发布：参考 [environments.md](environments.md) 的 Cloud-All 发布模板。
 
 ```powershell
 # 在项目根目录
@@ -142,7 +142,7 @@ git commit -m "Your changes description"
 git push
 ```
 
-推送代码不会自动发布到生产环境；Cloud-All（Azure Container Apps）发布方式请参考 [ENVIRONMENTS.md](ENVIRONMENTS.md) 与 [CONTAINER-APPS-DEPLOYMENT.md](CONTAINER-APPS-DEPLOYMENT.md)。
+推送代码不会自动发布到生产环境；Cloud-All（Azure Container Apps）发布方式请参考 [environments.md](environments.md) 与 [container-apps-deployment.md](container-apps-deployment.md)。
 
 ---
 

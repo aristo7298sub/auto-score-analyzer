@@ -161,7 +161,7 @@ POST /api/auth/login
 
 ## 🔗 相关文档
 
-- [后端API文档](../BACKEND-API-DOCS.md)
+- [后端API文档](../reference/backend-api-docs.md)
 - [Ant Design组件库](https://ant.design/)
 - [React Router文档](https://reactrouter.com/)
 - [Zustand文档](https://zustand-demo.pmnd.rs/)

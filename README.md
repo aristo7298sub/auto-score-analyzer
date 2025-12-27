@@ -11,8 +11,9 @@
 - **C. Cloud-All（纯云端）**：Azure Container Apps（生产/演示）
 
 详细说明与发布模板见：
-- [ENVIRONMENTS.md](ENVIRONMENTS.md)
-- [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md)
+- [docs/README.md](docs/README.md)
+- [docs/guides/environments.md](docs/guides/environments.md)
+- [docs/guides/local-development.md](docs/guides/local-development.md)
 
 ## ✨ 核心功能
 
@@ -123,57 +124,27 @@ npm run dev
 
 #### 5. 设置管理员（可选）
 
-管理员权限需要在数据库中将用户的 `is_admin` 设置为 `true`，详见 [ADMIN-GUIDE.md](ADMIN-GUIDE.md)。
+管理员权限需要在数据库中将用户的 `is_admin` 设置为 `true`，详见 [docs/reference/admin-guide.md](docs/reference/admin-guide.md)。
+
 
 ### 生产部署
 
 生产/演示环境使用 Azure Container Apps（不再使用 Azure VM）。
 
-- 部署：见 [CONTAINER-APPS-DEPLOYMENT.md](CONTAINER-APPS-DEPLOYMENT.md)
-- 自定义域名：见 [DOMAIN-SETUP.md](DOMAIN-SETUP.md)
+- 部署：见 [docs/guides/container-apps-deployment.md](docs/guides/container-apps-deployment.md)
+- 自定义域名：见 [docs/guides/domain-setup.md](docs/guides/domain-setup.md)
 
 ## 📦 项目结构
 
 ```
 auto-score-analyzer/
-├── backend/                    # Python FastAPI 后端
-│   ├── app/
-│   │   ├── api/               # API 路由
-│   │   │   ├── auth.py        # 认证接口
-│   │   │   ├── endpoints.py   # 业务接口
-│   │   │   └── admin.py       # 管理接口
-│   │   ├── core/              # 核心配置
-│   │   │   └── config.py      # 环境配置
-│   │   ├── models/            # 数据模型
-│   │   │   ├── score.py       # 成绩模型
-│   │   │   └── user.py        # 用户模型
-│   │   └── services/          # 业务服务
-│   │       ├── analysis_service.py      # AI分析服务
-│   │       ├── file_service.py          # 文件解析服务
-│   │       ├── file_storage_service.py  # 文件存储服务
-│   │       └── export_service.py        # 导出服务
-│   ├── uploads/               # 上传文件存储
-│   ├── exports/               # 导出文件存储
-│   ├── requirements.txt       # Python 依赖
-│   └── alembic/               # 数据库迁移（Alembic）
-│
-├── frontend/                   # React + TypeScript 前端
-│   ├── src/
-│   │   ├── components/        # 通用组件
-│   │   │   └── MainLayout.tsx # 主布局
-│   │   ├── pages/             # 页面组件
-│   │   │   ├── Home.tsx       # 主页(文件上传&分析)
-│   │   │   ├── Login.tsx      # 登录页
-│   │   │   ├── Register.tsx   # 注册页
-│   │   │   └── Admin.tsx      # 管理后台
-│   │   ├── services/          # API 服务
-│   │   │   └── apiClient.ts   # API 客户端
-│   │   ├── store/             # 状态管理
-│   │   │   ├── authStore.ts   # 认证状态
-│   │   │   └── appStore.ts    # 应用状态
-│   │   ├── styles/            # 样式文件
-│   │   │   ├── auth.css       # 认证页面样式
-│   │   │   ├── home.css       # 主页样式
+├── backend/          # Python FastAPI 后端
+├── frontend/         # React + TypeScript + Vite 前端
+├── docs/             # 项目文档（入口见 docs/README.md）
+├── docker-compose.yml
+└── README.md
+```
+
 ## 🛠️ 技术栈
 
 ### 后端
@@ -231,7 +202,7 @@ ACS_EMAIL_SENDER=<your-verified-sender-email>
 EMAIL_LOG_CODES_IN_DEV=false
 ```
 
-更详细步骤见 [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md)。
+更详细步骤见 [docs/guides/local-development.md](docs/guides/local-development.md)。
 
 #### 成绩分析
 - `POST /api/upload` - 上传并分析成绩文件
@@ -279,7 +250,7 @@ alembic upgrade head
 
 ### 设置管理员
 
-详见 [ADMIN-GUIDE.md](ADMIN-GUIDE.md)（包含 SQL 示例）。
+详见 [docs/reference/admin-guide.md](docs/reference/admin-guide.md)（包含 SQL 示例）。
 
 ### 运行测试
 
@@ -322,67 +293,3 @@ aristo7298sub
 ## 📞 联系方式
 
 如有问题或建议,请通过 GitHub Issues 联系。
-│   │       └── score.ts       # 成绩类型定义
-│   ├── package.json
-│   └── vite.config.ts
-│
-├── docker-compose.yml          # Docker Compose 配置
-├── README.md                   # 项目文档
-├── CONTAINER-APPS-DEPLOYMENT.md # Azure Container Apps 部署指南
-├── DOMAIN-SETUP.md              # 自定义域名配置
-└── LOCAL-DEVELOPMENT.md        # 本地开发指南
-```
-│   └── Dockerfile
-├── docker-compose.yml      # Docker编排
-├── nginx.conf             # Nginx配置
-└── README.md
-```
-
-## 🔧 技术栈
-
-### 后端
-- FastAPI - 高性能Web框架
-- Azure OpenAI - AI分析能力
-- pandas - 数据处理
-- openpyxl - Excel文件处理
-- matplotlib - 数据可视化
-
-### 前端
-- React 18 - UI框架
-- TypeScript - 类型安全
-- Vite - 构建工具
-- Ant Design - UI组件库
-
-### 部署
-- Docker - 容器化
-- Nginx - 反向代理
-- GitHub Actions - CI/CD
-
-## 🌐 Azure Blob Storage（可选）
-
-支持使用Azure Blob Storage存储上传和导出文件：
-
-1. 在 `.env` 中设置 `STORAGE_TYPE=blob`
-2. 配置 `AZURE_STORAGE_CONNECTION_STRING` 等参数
-3. 重启服务
-
-## 使用说明
-
-1. 访问前端界面
-2. 上传Excel/Word/PPT文件
-   - **Excel格式要求**：第一行为知识点名称，第一列（从第二行开始）为学生姓名，单元格中有值（任意非空值）表示该学生在该知识点有扣分（仅作标记，不代表真实扣分值），空值表示不扣分，最后一列为总分。
-3. 系统会自动分析学生成绩并提供改进建议
-4. 可以搜索特定学生的成绩信息
-5. 支持导出分析报告
-
-## 📝 API文档
-
-启动后访问 http://localhost:8000/docs 查看Swagger API文档
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 📄 许可
-
-MIT License 

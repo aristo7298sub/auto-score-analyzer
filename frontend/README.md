@@ -25,4 +25,4 @@ npm run dev
 VITE_API_URL=http://localhost:8000
 ```
 
-更完整的三环境说明见仓库根目录的 [ENVIRONMENTS.md](../ENVIRONMENTS.md)。
+更完整的三环境说明见仓库的 [docs/guides/environments.md](../docs/guides/environments.md)。

@@ -17,7 +17,7 @@ alembic upgrade head
 ## 管理员设置
 
 本项目不依赖“启动时自动创建默认管理员账号”。
-管理员权限通过将用户的 `is_admin` 设置为 `true` 来授予，详见 [ADMIN-GUIDE.md](ADMIN-GUIDE.md)。
+管理员权限通过将用户的 `is_admin` 设置为 `true` 来授予，详见 [admin-guide.md](admin-guide.md)。
 
 ## 重置数据库（危险操作）
 
