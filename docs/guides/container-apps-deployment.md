@@ -255,6 +255,7 @@ az containerapp logs show --name backend -g rg-score-analyzer --tail 100
 **原因**：
 - 后端环境变量 `CORS_ORIGINS` 没包含你的前端域名（例如 `https://xscore-app.com` / `https://www.xscore-app.com`）。
 - 或者使用了旧版部署脚本：脚本在部署末尾把 `CORS_ORIGINS` 覆盖成“仅 ACA 默认前端域名”，导致你手动加过的自定义域名被冲掉。
+- 近期踩坑：**看起来像 CORS 配置问题，但实际是新 revision 根本没启动成功**。当数据库连接耗尽（Postgres 报 “remaining connection slots are reserved …”）时，新 revision 会 `Unhealthy/Degraded`，流量可能仍在旧 revision 上，导致你怎么改 `CORS_ORIGINS` 都像“没生效”。
 
 **解决（热修复）**：
 ```powershell
@@ -264,8 +265,39 @@ $allowed = "https://<aca-frontend-fqdn>,https://<your-frontend-domain>,https://<
 az containerapp update -n $backendApp -g $rg --set-env-vars "CORS_ORIGINS=$allowed"
 ```
 
+**如果你已经设置了 `CORS_ORIGINS`，但仍然 OPTIONS 400 / 无 CORS 响应头**（高概率是 revision 不健康/没切上来）：
+
+1) 确认当前在跑的是哪个 revision（以及是否健康）
+
+```powershell
+$rg = "rg-score-analyzer"
+$backendApp = "backend"
+
+az containerapp show -g $rg -n $backendApp --query "{activeRevisionsMode:properties.configuration.activeRevisionsMode,latestReadyRevisionName:properties.latestReadyRevisionName,latestRevisionName:properties.latestRevisionName}" -o json
+az containerapp revision list -g $rg -n $backendApp -o table
+```
+
+2) 直接看“最新 revision”的日志，确认是否是 DB 连接耗尽导致启动失败
+
+```powershell
+$rev = "<latest-revision-name>"
+az containerapp logs show -g $rg -n $backendApp --revision $rev --tail 200
+```
+
+3) 生产建议的快速止血组合（避免多 revision / DEBUG reload 放大连接压力）
+
+```powershell
+# 仅保留一个活动 revision，避免多版本同时占用连接
+az containerapp revision set-mode -g $rg -n $backendApp --mode single
+
+# 强制关闭 DEBUG（不要在 ACA 里开 reload）
+az containerapp update -g $rg -n $backendApp --set-env-vars "DEBUG=false"
+```
+
 **预防**：
 - 使用最新版 `scripts/deploy-to-container-apps.ps1`（会自动合并 ACA 前端域名 + custom domains，避免覆盖回滚）。
+- 生产环境保持 `activeRevisionsMode=Single`，并确保 `DEBUG=false`（避免 reload/多进程导致连接数膨胀）。
+- 关注 Postgres 连接上限（`max_connections` / 连接池配置 / 后端实例数），避免发布时新 revision 因无法连库而启动失败。
 
 ### 6. 前端看起来“没发请求”（HAR 里没有 login / 报 ERR_INVALID_URL）
 

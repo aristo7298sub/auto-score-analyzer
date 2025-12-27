@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import json
+import os
 
 from app.core.database import engine, Base, ensure_schema_compatibility
 from app.core.config import settings
@@ -39,17 +41,47 @@ default_origins = [
     "http://localhost:5173",
     "http://localhost:3000",
     "http://localhost:8000",
+    "https://xscore-app.com",
+    "https://www.xscore-app.com",
+    "https://ca-score-analyzer-frontend.blackwave-bc3cb801.eastasia.azurecontainerapps.io",
 ]
 
-if settings.CORS_ORIGINS:
-    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
-else:
-    origins = default_origins
+def _parse_cors_origins(raw: str) -> list[str]:
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+
+    parts: list[str]
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                parts = [str(x) for x in data]
+            else:
+                parts = [raw]
+        except Exception:
+            parts = [raw]
+    else:
+        parts = raw.split(",")
+
+    cleaned: list[str] = []
+    for item in parts:
+        origin = str(item).strip()
+        origin = origin.strip('"\'')
+        origin = origin.strip()
+        if origin:
+            cleaned.append(origin)
+
+    return cleaned
+
+
+raw_cors_origins = os.getenv("CORS_ORIGINS") or (settings.CORS_ORIGINS or "")
+origins = _parse_cors_origins(raw_cors_origins) or default_origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
