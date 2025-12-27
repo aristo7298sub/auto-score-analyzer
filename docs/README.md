@@ -18,7 +18,7 @@
 
 ## 运维与复盘
 
-- 运维 Runbook（2025-12-14）：[operations/runbook-2025-12-14.md](operations/runbook-2025-12-14.md)
+- 运维 Runbook：[operations/runbook.md](operations/runbook.md)
 - 复盘（2025-12-26：本地通过但云端踩坑）：[operations/retrospectives/2025-12-26-cloud-deploy-retrospective.md](operations/retrospectives/2025-12-26-cloud-deploy-retrospective.md)
 - 开发日志（2025-12-15）：[operations/logs/devlog-2025-12-15.md](operations/logs/devlog-2025-12-15.md)
 
