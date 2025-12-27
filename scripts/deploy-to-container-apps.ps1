@@ -298,8 +298,7 @@ $optionalBackendKeys = @(
     "BACKEND_URL",
     "CORS_ORIGINS",
     "EMAIL_LOG_CODES_IN_DEV",
-    "ACS_EMAIL_SENDER",
-    "DATABASE_URL"
+    "ACS_EMAIL_SENDER"
 )
 
 foreach ($k in $optionalBackendKeys) {
@@ -313,6 +312,17 @@ $backendSecrets = @(
     "storage-conn=$storageConnString",
     "storage-key=$storageKey"
 )
+
+# DATABASE_URL：数据库连接串（包含敏感信息），必须用 secret 保存，避免明文出现在 env vars。
+# - 若 backend/.env 提供，则更新云端 secret（可用于首次部署 / 主动轮换）。
+# - 若未提供且后端应用已存在，则不覆盖（保留云端现有配置）。
+if ($envVars.ContainsKey('DATABASE_URL') -and -not [string]::IsNullOrWhiteSpace($envVars['DATABASE_URL'])) {
+    $backendSecrets += "database-url=$($envVars['DATABASE_URL'])"
+    $backendEnvVars += "DATABASE_URL=secretref:database-url"
+} elseif (-not $backendExists) {
+    # 首次创建允许不提供 DATABASE_URL（将使用应用默认值/本地 SQLite）。
+    # 若你的目标是云端 PostgreSQL，请在 backend/.env 中配置 DATABASE_URL。
+}
 
 # SECRET_KEY：用于 JWT + 邮箱验证码 hash 的 pepper。
 # - 若 backend/.env 提供，则更新云端 secret（可用于首次部署 / 主动轮换）。

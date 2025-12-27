@@ -77,6 +77,12 @@ backend/*.db-wal
 scripts/deploy-*.log
 deployment-url.txt
 
+# 本地私有资源清单（真实云端资源名/地址，禁止提交）
+docs/private/azure-resources.private.md
+
+# 可选约定：任何标记为 private 的文件默认不提交
+*.private.*
+
 # 测试和示例文件
 Aaa.xlsx
 副本分析表*.xlsx
