@@ -8,6 +8,8 @@ from sqlalchemy import func, desc
 from typing import List
 from datetime import datetime, timedelta
 
+from ..core.time import utcnow
+
 from ..core.database import get_db
 from ..core.security import get_current_admin_user
 from ..models.user import User, AnalysisLog, QuotaTransaction
@@ -153,7 +155,7 @@ async def set_user_vip(
             )
 
         user.is_vip = True
-        user.vip_expires_at = datetime.utcnow() + timedelta(days=days)
+        user.vip_expires_at = utcnow() + timedelta(days=days)
     else:
         user.is_vip = False
         user.vip_expires_at = None

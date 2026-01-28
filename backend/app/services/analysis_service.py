@@ -74,7 +74,9 @@ class AnalysisService:
             client = AzureOpenAIResponsesClient(
                 responses_url=AnalysisService._resolve_responses_url(),
                 api_key=settings.AZURE_OPENAI_API_KEY,
-                timeout_seconds=float(settings.OPENAI_REQUEST_TIMEOUT_SECONDS or 60.0),
+                fallback_responses_url=(settings.AZURE_OPENAI_RESPONSES_URL_2 or None),
+                fallback_api_key=(settings.AZURE_OPENAI_API_KEY_2 or None),
+                timeout_seconds=float(settings.OPENAI_REQUEST_TIMEOUT_SECONDS or 600.0),
             )
 
             # User prompt: directly list original Excel questions and their deduction.
@@ -112,6 +114,8 @@ class AnalysisService:
 
             prompt = "\n".join(lines) + "\n"
 
+            # Call AOAI via /responses; fallback resource will be used automatically on recoverable errors.
+
             # Return deduction summary keyed by category (as before), but only include deducted items.
             deduction_by_category: dict[str, list[dict[str, Any]]] = {}
             for item, d in deducted_items:
@@ -125,6 +129,7 @@ class AnalysisService:
 
             result = await client.create_text_response(
                 model=AnalysisService._resolve_analysis_model(),
+                fallback_model=(settings.ANALYSIS_MODEL_2.strip() if settings.ANALYSIS_MODEL_2 else None),
                 system_prompt=system_content,
                 user_prompt=prompt,
                 temperature=float(settings.ANALYSIS_TEMPERATURE or 0.5),

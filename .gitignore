@@ -51,6 +51,9 @@ dist-ssr/
 backend/data/*.json
 backend/data/*.xlsx
 backend/data/*.csv
+*.xls
+*.xlsx
+*.xlsm
 backend/uploads/*
 !backend/uploads/.gitkeep
 backend/exports/*

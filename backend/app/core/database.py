@@ -56,13 +56,15 @@ def ensure_schema_compatibility() -> None:
             cols = {c['name'] for c in insp.get_columns('users')}
             if 'vip_expires_at' not in cols:
                 with engine.begin() as conn:
-                    conn.execute(text('ALTER TABLE users ADD COLUMN vip_expires_at TIMESTAMP NULL'))
+                    vip_col_type = 'TIMESTAMPTZ' if dialect == 'postgresql' else 'TIMESTAMP'
+                    conn.execute(text(f'ALTER TABLE users ADD COLUMN vip_expires_at {vip_col_type} NULL'))
 
             # Email verification fields (stage-1 auth)
             if 'email_verified_at' not in cols:
                 with engine.begin() as conn:
                     try:
-                        conn.execute(text('ALTER TABLE users ADD COLUMN email_verified_at TIMESTAMP NULL'))
+                        verified_at_type = 'TIMESTAMPTZ' if dialect == 'postgresql' else 'TIMESTAMP'
+                        conn.execute(text(f'ALTER TABLE users ADD COLUMN email_verified_at {verified_at_type} NULL'))
                     except Exception:
                         pass
 

@@ -290,9 +290,15 @@ $backendEnvVars = @(
 )
 
 $optionalBackendKeys = @(
+    "AZURE_OPENAI_RESPONSES_URL_2",
+    "PARSING_MODEL_2",
+    "ANALYSIS_MODEL_2",
     "PARSING_REASONING_EFFORT",
     "ANALYSIS_TEMPERATURE",
     "OPENAI_REQUEST_TIMEOUT_SECONDS",
+    "OPENAI_REQUEST_MAX_RETRIES",
+    "OPENAI_REQUEST_RETRY_BACKOFF_SECONDS",
+    "OPENAI_REQUEST_RETRY_MAX_BACKOFF_SECONDS",
     "LOG_LEVEL",
     "DEBUG",
     "BACKEND_URL",
@@ -312,6 +318,12 @@ $backendSecrets = @(
     "storage-conn=$storageConnString",
     "storage-key=$storageKey"
 )
+
+# Optional: secondary AOAI key for failover
+if ($envVars.ContainsKey('AZURE_OPENAI_API_KEY_2') -and -not [string]::IsNullOrWhiteSpace($envVars['AZURE_OPENAI_API_KEY_2'])) {
+    $backendSecrets += "openai-key-2=$($envVars['AZURE_OPENAI_API_KEY_2'])"
+    $backendEnvVars += "AZURE_OPENAI_API_KEY_2=secretref:openai-key-2"
+}
 
 # DATABASE_URL：数据库连接串（包含敏感信息），必须用 secret 保存，避免明文出现在 env vars。
 # - 若 backend/.env 提供，则更新云端 secret（可用于首次部署 / 主动轮换）。

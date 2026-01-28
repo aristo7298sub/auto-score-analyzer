@@ -24,15 +24,27 @@ class Settings(BaseSettings):
     # 若未设置，则会根据 AZURE_OPENAI_ENDPOINT 推导。
     AZURE_OPENAI_RESPONSES_URL: Optional[str] = None
 
+    # Azure OpenAI fallback resource (secondary)
+    # Same semantics as primary; used when primary hits recoverable errors (timeout/network/429/5xx).
+    AZURE_OPENAI_RESPONSES_URL_2: Optional[str] = None
+    AZURE_OPENAI_API_KEY_2: Optional[str] = None
+
     # 解析/总结模型分离（纯配置）
     # 在 /responses API 下，直接填写请求 body 的 model 字段值。
     PARSING_MODEL: Optional[str] = None
+    PARSING_MODEL_2: Optional[str] = None
     PARSING_REASONING_EFFORT: str = "high"
 
     ANALYSIS_MODEL: Optional[str] = None
+    ANALYSIS_MODEL_2: Optional[str] = None
     ANALYSIS_TEMPERATURE: float = 0.5
 
-    OPENAI_REQUEST_TIMEOUT_SECONDS: float = 60.0
+    OPENAI_REQUEST_TIMEOUT_SECONDS: float = 600.0
+
+    # Retries for Azure OpenAI /responses (timeouts/429/5xx)
+    OPENAI_REQUEST_MAX_RETRIES: int = 2
+    OPENAI_REQUEST_RETRY_BACKOFF_SECONDS: float = 0.8
+    OPENAI_REQUEST_RETRY_MAX_BACKOFF_SECONDS: float = 8.0
     
     # Azure Storage 配置
     STORAGE_TYPE: Literal["local", "azure"] = "local"

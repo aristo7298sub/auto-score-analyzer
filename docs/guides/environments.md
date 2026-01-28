@@ -102,6 +102,19 @@ $loginServer = (az acr show -n $acr --query loginServer -o tsv)
 az containerapp update -g $rg -n <backend-app>  --image "$loginServer/score-analyzer-backend:$tag"
 az containerapp update -g $rg -n <frontend-app> --image "$loginServer/score-analyzer-frontend:$tag"
 
+# 重要：后端 env vars（示例）
+# - 第二资源（可选）用于 AOAI 可恢复错误的快速切换
+# - secrets 建议用 `az containerapp secret set` 管理 key，不要明文出现在命令行历史
+#
+# AZURE_OPENAI_RESPONSES_URL=https://<resource>.openai.azure.com/openai/v1/responses
+# AZURE_OPENAI_RESPONSES_URL_2=https://<resource-2>.openai.azure.com/openai/v1/responses
+# PARSING_MODEL=o4-mini
+# PARSING_MODEL_2=o4-mini
+# ANALYSIS_MODEL=gpt-4.1-nano
+# ANALYSIS_MODEL_2=gpt-4.1-nano
+# OPENAI_REQUEST_TIMEOUT_SECONDS=600
+# OPENAI_REQUEST_MAX_RETRIES=2
+
 az containerapp revision list -g $rg -n <backend-app>  -o table
 az containerapp revision list -g $rg -n <frontend-app> -o table
 ```

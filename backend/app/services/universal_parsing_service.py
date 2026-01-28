@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import re
 import tempfile
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
 
 import pandas as pd
 from docx import Document
@@ -15,6 +18,9 @@ from pptx import Presentation
 from app.core.config import settings
 from app.models.score import ScoreItem, StudentScore
 from app.services.azure_openai_responses_client import AzureOpenAIResponsesClient
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,6 +53,13 @@ def _resolve_responses_url() -> str:
     if endpoint.endswith("/openai/v1/responses"):
         return endpoint
     return f"{endpoint}/openai/v1/responses"
+
+
+def _resolve_responses_url_2() -> str | None:
+    v = getattr(settings, "AZURE_OPENAI_RESPONSES_URL_2", None)
+    if v and str(v).strip():
+        return str(v).strip().rstrip("/")
+    return None
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -136,7 +149,9 @@ class UniversalParsingService:
         client = AzureOpenAIResponsesClient(
             responses_url=_resolve_responses_url(),
             api_key=settings.AZURE_OPENAI_API_KEY,
-            timeout_seconds=float(settings.OPENAI_REQUEST_TIMEOUT_SECONDS or 60.0),
+            fallback_responses_url=_resolve_responses_url_2(),
+            fallback_api_key=(settings.AZURE_OPENAI_API_KEY_2 or None),
+            timeout_seconds=float(settings.OPENAI_REQUEST_TIMEOUT_SECONDS or 600.0),
         )
 
         system_prompt = (
@@ -144,6 +159,19 @@ class UniversalParsingService:
             "Your task: infer a parsing mapping plan to convert the given file IR into a list of StudentScore objects. "
             "If uncertain, set confidence low and include errors/recommendations."
         )
+
+        # Responses structured output: prefer json_schema for strictness.
+        mapping_schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "mapping": {"type": "object", "additionalProperties": True},
+                "errors": {"type": "array", "items": {"type": "string"}},
+                "recommendations": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["confidence", "mapping", "errors", "recommendations"],
+        }
 
         user_prompt = json.dumps(
             {
@@ -184,12 +212,35 @@ class UniversalParsingService:
             ensure_ascii=False,
         )
 
-        result = await client.create_text_response(
-            model=parsing_model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            reasoning_effort=(settings.PARSING_REASONING_EFFORT or "high"),
-        )
+        try:
+            result = await client.create_text_response(
+                model=parsing_model,
+                fallback_model=(settings.PARSING_MODEL_2.strip() if settings.PARSING_MODEL_2 else None),
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                reasoning_effort=(settings.PARSING_REASONING_EFFORT or "high"),
+                text_format={
+                    "type": "json_schema",
+                    "name": "mapping_plan",
+                    "schema": mapping_schema,
+                    "strict": True,
+                },
+            )
+        except httpx.HTTPStatusError as e:
+            # Some deployments/models may not support json_schema yet; fallback to json_object.
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            if status_code in (400, 404, 422):
+                logger.warning("AOAI structured output json_schema rejected (HTTP %s). Fallback to json_object.", status_code)
+                result = await client.create_text_response(
+                    model=parsing_model,
+                    fallback_model=(settings.PARSING_MODEL_2.strip() if settings.PARSING_MODEL_2 else None),
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    reasoning_effort=(settings.PARSING_REASONING_EFFORT or "high"),
+                    text_format={"type": "json_object"},
+                )
+            else:
+                raise
 
         raw_text = result.text
         obj = _extract_json_object(raw_text)
@@ -433,6 +484,36 @@ def _resolve_excel_column(df: pd.DataFrame, col: Any) -> str:
     raise ValueError(f"Unknown column: {col}")
 
 
+def _auto_detect_total_score_column(df: pd.DataFrame) -> Optional[str]:
+    """Best-effort detection of a total score column.
+
+    Some files have a clear '总分' column, but the AI mapping may omit it.
+    If we fail to detect, callers will fall back to default score.
+    """
+
+    if df is None or df.empty or len(df.columns) == 0:
+        return None
+
+    keywords = ["总分", "得分", "总成绩", "总计", "总评", "score", "total"]
+    for c in df.columns:
+        if not isinstance(c, str):
+            continue
+        cc = c.strip().lower()
+        for kw in keywords:
+            if kw in cc:
+                return c
+
+    # Heuristic: last column is mostly numeric.
+    last = df.columns[-1]
+    try:
+        s = pd.to_numeric(df[last], errors="coerce")
+        if len(s) > 0 and float(s.notna().mean()) >= 0.6:
+            return str(last)
+    except Exception:
+        return None
+    return None
+
+
 def _parse_excel_full(file_path: str, mapping: dict[str, Any]) -> List[StudentScore]:
     excel_cfg = mapping.get("excel") if isinstance(mapping.get("excel"), dict) else {}
     sheet = excel_cfg.get("sheet")
@@ -467,13 +548,19 @@ def _parse_excel_full(file_path: str, mapping: dict[str, Any]) -> List[StudentSc
                 pass
         item_cols = [c for c in df.columns if c not in exclude]
 
-    student_col_name = _resolve_excel_column(df, student_col)
+    try:
+        student_col_name = _resolve_excel_column(df, student_col)
+    except Exception:
+        student_col_name = df.columns[0]
+
     total_col_name: Optional[str] = None
     if total_col is not None:
         try:
             total_col_name = _resolve_excel_column(df, total_col)
         except Exception:
             total_col_name = None
+    else:
+        total_col_name = _auto_detect_total_score_column(df)
 
     resolved_item_cols: list[str] = []
     for c in item_cols:
@@ -481,6 +568,11 @@ def _parse_excel_full(file_path: str, mapping: dict[str, Any]) -> List[StudentSc
             resolved_item_cols.append(_resolve_excel_column(df, c))
         except Exception:
             continue
+
+    # Defensive: never treat name/total columns as item columns.
+    resolved_item_cols = [
+        c for c in resolved_item_cols if c != student_col_name and (total_col_name is None or c != total_col_name)
+    ]
 
     scores: list[StudentScore] = []
 

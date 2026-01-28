@@ -4,7 +4,7 @@
 import os
 import secrets
 from datetime import timedelta
-from app.core.time import utcnow
+from app.core.time import utcnow, ensure_utc_aware
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -99,8 +99,8 @@ async def get_current_user(
     try:
         if user.is_vip and getattr(user, "vip_expires_at", None):
             now = utcnow()
-            # vip_expires_at 存在时按到期时间判断
-            if user.vip_expires_at <= now:
+            vip_expires_at = ensure_utc_aware(getattr(user, "vip_expires_at", None))
+            if vip_expires_at and vip_expires_at <= now:
                 user.is_vip = False
                 user.vip_expires_at = None
                 db.commit()
@@ -131,6 +131,7 @@ def check_quota(user: User, cost: int = 1) -> bool:
         if vip_expires_at is None:
             return True
         # 有到期时间则按是否未过期判断
-        if vip_expires_at > utcnow():
+        vip_expires_at = ensure_utc_aware(vip_expires_at)
+        if vip_expires_at and vip_expires_at > utcnow():
             return True
     return user.quota_balance >= cost

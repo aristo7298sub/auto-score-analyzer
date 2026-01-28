@@ -1,7 +1,7 @@
 """add analysis token usage columns
 
 Revision ID: 003_add_analysis_tokens
-Revises: 002_add_vip_expires_at
+Revises: 002
 Create Date: 2025-12-15
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "003_add_analysis_tokens"
-down_revision = "002_add_vip_expires_at"
+down_revision = "002"
 branch_labels = None
 depends_on = None
 

@@ -39,6 +39,20 @@ AZURE_OPENAI_RESPONSES_URL=https://your-resource.openai.azure.com/openai/v1/resp
 PARSING_MODEL=o4-mini
 ANALYSIS_MODEL=gpt-4.1-nano
 
+# 可选：第二 AOAI 资源（故障切换，仅对可恢复错误：timeout/network/429/5xx）
+AZURE_OPENAI_API_KEY_2=your-key-2
+AZURE_OPENAI_RESPONSES_URL_2=https://your-resource-2.openai.azure.com/openai/v1/responses
+
+# 可选：第二资源上的模型名（不填则 fallback 使用同一个 model 字段值）
+PARSING_MODEL_2=o4-mini
+ANALYSIS_MODEL_2=gpt-4.1-nano
+
+# 超时与重试（/responses）
+OPENAI_REQUEST_TIMEOUT_SECONDS=600
+OPENAI_REQUEST_MAX_RETRIES=2
+OPENAI_REQUEST_RETRY_BACKOFF_SECONDS=0.8
+OPENAI_REQUEST_RETRY_MAX_BACKOFF_SECONDS=8.0
+
 # Storage (已自动配置)
 STORAGE_TYPE=azure
 AZURE_STORAGE_CONNECTION_STRING=...
