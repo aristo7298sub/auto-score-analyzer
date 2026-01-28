@@ -1,6 +1,6 @@
 import math
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import List, Dict, Optional, Any
 
 class ScoreItem(BaseModel):
@@ -38,6 +38,40 @@ class StudentScore(BaseModel):
     total_score: float
     analysis: Optional[str] = None
     suggestions: Optional[List[str]] = None
+
+    @field_validator('total_score', mode='before')
+    @classmethod
+    def _coerce_total_score(cls, v):
+        # Allow None/blank/NaN/Inf and repair later in model_validator.
+        if v is None or v == "":
+            return float('nan')
+
+        if isinstance(v, float):
+            return v
+
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in {"nan", "+nan", "-nan", "inf", "+inf", "-inf", "infinity", "+infinity", "-infinity"}:
+                return float('nan')
+
+        try:
+            return float(v)
+        except Exception:
+            return float('nan')
+
+    @model_validator(mode='after')
+    def _fill_total_score_from_deductions(self):
+        # If total_score is missing/invalid, compute it from deductions.
+        if isinstance(self.total_score, float) and math.isfinite(self.total_score):
+            return self
+
+        full_score = 100.0
+        total_deduction = sum(float(i.deduction or 0.0) for i in (self.scores or []))
+        computed = full_score - total_deduction
+        if not math.isfinite(computed):
+            computed = 0.0
+        self.total_score = max(0.0, min(full_score, float(computed)))
+        return self
 
 class ScoreAnalysis(BaseModel):
     """成绩分析"""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import tempfile
 import logging
@@ -92,9 +93,12 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
         if v is None:
             return default
         if isinstance(v, (int, float)):
-            return float(v)
+            f = float(v)
+            return f if math.isfinite(f) else default
         s = str(v).strip()
         if not s:
+            return default
+        if s.lower() in {"nan", "+nan", "-nan", "inf", "+inf", "-inf", "infinity", "+infinity", "-infinity"}:
             return default
         return float(s)
     except Exception:
@@ -581,9 +585,10 @@ def _parse_excel_full(file_path: str, mapping: dict[str, Any]) -> List[StudentSc
         if not student_name or student_name.lower() == "nan":
             continue
 
+        # Total score may be missing/NA; if so, compute from deductions later.
         total_score = 100.0
         if total_col_name:
-            total_score = _safe_float(row.get(total_col_name), default=100.0)
+            total_score = _safe_float(row.get(total_col_name), default=float("nan"))
 
         items: list[ScoreItem] = []
         for c in resolved_item_cols:
@@ -618,6 +623,12 @@ def _parse_excel_full(file_path: str, mapping: dict[str, Any]) -> List[StudentSc
                     )
                 )
 
+        # If total score is missing/NA, compute it from deductions.
+        if not math.isfinite(float(total_score)):
+            full_score = 100.0
+            total_deduction = sum(float(i.deduction or 0.0) for i in items)
+            total_score = max(0.0, min(full_score, full_score - total_deduction))
+
         scores.append(StudentScore(student_name=student_name, scores=items, total_score=float(total_score)))
 
     return scores
@@ -639,7 +650,9 @@ def _parse_word_full(file_path: str, mapping: dict[str, Any]) -> List[StudentSco
     def flush():
         nonlocal current_name, current_items
         if current_name:
-            total = sum(i.deduction for i in current_items) if current_items else 100.0
+            full_score = 100.0
+            total_deduction = sum(i.deduction for i in current_items) if current_items else 0.0
+            total = max(0.0, min(full_score, full_score - float(total_deduction)))
             students.append(StudentScore(student_name=current_name, scores=current_items, total_score=float(total)))
         current_name = None
         current_items = []
@@ -710,7 +723,9 @@ def _parse_ppt_full(file_path: str, mapping: dict[str, Any]) -> List[StudentScor
                 continue
             items.append(ScoreItem(question_name=q, deduction=float(abs(d)), category=_guess_category(q)))
 
-        total = sum(i.deduction for i in items) if items else 100.0
+        full_score = 100.0
+        total_deduction = sum(i.deduction for i in items) if items else 0.0
+        total = max(0.0, min(full_score, full_score - float(total_deduction)))
         students.append(StudentScore(student_name=student_name, scores=items, total_score=float(total)))
 
     return students
